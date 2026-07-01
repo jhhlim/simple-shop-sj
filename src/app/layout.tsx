@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import { AuthProvider } from "@/components/AuthProvider";
 import { CartProvider } from "@/components/CartProvider";
 import { Shell } from "@/components/Shell";
 import { SHOP_NAME } from "@/lib/constants";
@@ -23,9 +24,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geist.variable} h-full`}>
       <body className="min-h-full flex flex-col bg-stone-50 text-stone-900 antialiased">
-        <CartProvider>
-          <Shell>{children}</Shell>
-        </CartProvider>
+        <AuthProvider>
+          <CartProvider>
+            <Shell>{children}</Shell>
+          </CartProvider>
+        </AuthProvider>
       </body>
     </html>
   );

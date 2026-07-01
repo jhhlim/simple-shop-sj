@@ -4,24 +4,11 @@ import { SHIPPING_FEE } from "@/lib/constants";
 import { createOrder } from "@/lib/orders";
 import { getProduct } from "@/lib/products";
 import { stripeKeyProblem } from "@/lib/payments";
+import {
+  formatShippingForStorage,
+  validateShippingInfo,
+} from "@/lib/shipping-validation";
 import type { CartItem, ShippingInfo } from "@/lib/types";
-
-function validateShipping(shipping: ShippingInfo) {
-  const required: (keyof ShippingInfo)[] = [
-    "fullName",
-    "email",
-    "phone",
-    "street",
-    "city",
-    "state",
-    "zip",
-    "country",
-  ];
-  for (const key of required) {
-    if (!shipping[key]?.trim()) return false;
-  }
-  return true;
-}
 
 export async function POST(request: Request) {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -32,14 +19,17 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { items, shipping } = body as {
+    const { items, shipping: rawShipping } = body as {
       items: CartItem[];
       shipping: ShippingInfo;
     };
 
-    if (!items?.length || !validateShipping(shipping)) {
+    const shipping = formatShippingForStorage(rawShipping);
+    const { valid, errors } = validateShippingInfo(shipping);
+    if (!items?.length || !valid) {
+      const firstError = Object.values(errors)[0];
       return NextResponse.json(
-        { error: "Cart and complete shipping info are required" },
+        { error: firstError || "Cart and complete shipping info are required" },
         { status: 400 }
       );
     }
@@ -104,10 +94,10 @@ export async function POST(request: Request) {
       mode: "payment",
       customer_email: shipping.email,
       line_items: lineItems,
+      payment_method_types: ["card", "alipay"],
       success_url: `${origin}/success?order=${order.id}`,
       cancel_url: `${origin}/checkout`,
       metadata: { orderId: order.id },
-      shipping_address_collection: { allowed_countries: ["US", "CA"] },
     });
 
     return NextResponse.json({ url: session.url });

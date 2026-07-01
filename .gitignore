@@ -36,9 +36,12 @@ yarn-error.log*
 .env.*.local
 !.env.example
 
+data/orders.json
+data/shop.db
+data/shop.db-*
+
 # vercel
 .vercel
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts

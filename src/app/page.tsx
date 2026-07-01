@@ -2,6 +2,8 @@ import { ProductCard } from "@/components/ProductCard";
 import { ShippingNotice } from "@/components/ShippingNotice";
 import { getProducts } from "@/lib/products";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const products = await getProducts();
 

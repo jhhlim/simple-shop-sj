@@ -30,6 +30,14 @@ function SuccessContent() {
           <p className="mt-2 text-sm text-green-800">Order ID: {orderId}</p>
         )}
         <p className="mt-4 text-sm text-green-900/80">{SHIPPING_LABEL_NOTE}</p>
+        {orderId && (
+          <p className="mt-3 text-sm text-green-800">
+            <Link href={`/track?order=${orderId}`} className="font-medium underline">
+              Track your order
+            </Link>{" "}
+            anytime with your order ID and email.
+          </p>
+        )}
       </div>
       <Link href="/" className="mt-8 inline-block text-sm font-medium underline">
         Back to shop

@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import { useCart } from "@/components/CartProvider";
+import { ShippingForm } from "@/components/ShippingForm";
 import { ShippingNotice } from "@/components/ShippingNotice";
 import { SHIPPING_FEE } from "@/lib/constants";
+import {
+  formatShippingForStorage,
+  validateShippingInfo,
+  type ShippingFieldErrors,
+} from "@/lib/shipping-validation";
 import type { Product, ShippingInfo } from "@/lib/types";
 
 const emptyShipping: ShippingInfo = {
@@ -12,6 +19,7 @@ const emptyShipping: ShippingInfo = {
   email: "",
   phone: "",
   street: "",
+  street2: "",
   city: "",
   state: "",
   zip: "",
@@ -19,15 +27,27 @@ const emptyShipping: ShippingInfo = {
 };
 
 export default function CheckoutPage() {
+  const { data: session } = useSession();
   const { items } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [shipping, setShipping] = useState<ShippingInfo>(emptyShipping);
+  const [fieldErrors, setFieldErrors] = useState<ShippingFieldErrors>({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState<"stripe" | "paypal" | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<{
     stripe: { configured: boolean; error: string | null };
     paypal: { configured: boolean; error: string | null };
   } | null>(null);
+
+  useEffect(() => {
+    if (session?.user?.email && !shipping.email) {
+      setShipping((prev) => ({
+        ...prev,
+        email: session.user?.email || prev.email,
+        fullName: prev.fullName || session.user?.name || "",
+      }));
+    }
+  }, [session?.user?.email, session?.user?.name, shipping.email]);
 
   useEffect(() => {
     fetch("/api/products")
@@ -58,19 +78,30 @@ export default function CheckoutPage() {
   const subtotal = lines.reduce((sum, l) => sum + l.lineTotal, 0);
   const total = subtotal + (lines.length > 0 ? SHIPPING_FEE : 0);
 
-  function updateField<K extends keyof ShippingInfo>(key: K, value: ShippingInfo[K]) {
-    setShipping((prev) => ({ ...prev, [key]: value }));
+  function validateBeforePay(): ShippingInfo | null {
+    const formatted = formatShippingForStorage(shipping);
+    const { valid, errors } = validateShippingInfo(formatted);
+    setFieldErrors(errors);
+    if (!valid) {
+      setError("Please fix the shipping errors above before paying.");
+      return null;
+    }
+    setShipping(formatted);
+    setError("");
+    return formatted;
   }
 
   async function handlePay(method: "stripe" | "paypal") {
-    setError("");
+    const validShipping = validateBeforePay();
+    if (!validShipping) return;
+
     setLoading(method);
 
     try {
       const res = await fetch(`/api/checkout/${method}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items, shipping }),
+        body: JSON.stringify({ items, shipping: validShipping }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
       if (!res.ok) {
@@ -107,93 +138,35 @@ export default function CheckoutPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-2xl font-semibold">Checkout</h1>
-      <p className="mt-1 text-sm text-stone-600">
-        All fields below are required to place your order.
+      {session?.user ? (
+        <p className="mt-1 text-sm text-green-800">
+          Signed in as <strong>{session.user.name || session.user.email}</strong> — your cart is
+          saved to your account.
+        </p>
+      ) : (
+        <p className="mt-1 text-sm text-stone-600">
+          Checking out as <strong>guest</strong>.{" "}
+          <Link href="/login" className="font-medium underline">
+            Sign in
+          </Link>{" "}
+          to save your cart, or{" "}
+          <Link href="/register" className="font-medium underline">
+            create an account
+          </Link>
+          .
+        </p>
+      )}
+      <p className="mt-1 text-sm text-stone-500">
+        All fields marked * are required. Guest checkout is available — no account needed.
       </p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-6">
-        <section className="space-y-4 rounded-xl border border-stone-200 bg-white p-5">
-          <h2 className="font-medium">Shipping information</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm sm:col-span-2">
-              Full name *
-              <input
-                required
-                value={shipping.fullName}
-                onChange={(e) => updateField("fullName", e.target.value)}
-                className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              Email *
-              <input
-                required
-                type="email"
-                value={shipping.email}
-                onChange={(e) => updateField("email", e.target.value)}
-                className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              Phone *
-              <input
-                required
-                type="tel"
-                value={shipping.phone}
-                onChange={(e) => updateField("phone", e.target.value)}
-                className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm sm:col-span-2">
-              Street address *
-              <input
-                required
-                value={shipping.street}
-                onChange={(e) => updateField("street", e.target.value)}
-                className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              City *
-              <input
-                required
-                value={shipping.city}
-                onChange={(e) => updateField("city", e.target.value)}
-                className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              State *
-              <input
-                required
-                value={shipping.state}
-                onChange={(e) => updateField("state", e.target.value)}
-                className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              ZIP code *
-              <input
-                required
-                value={shipping.zip}
-                onChange={(e) => updateField("zip", e.target.value)}
-                className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              Country *
-              <select
-                required
-                value={shipping.country}
-                onChange={(e) => updateField("country", e.target.value)}
-                className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
-              >
-                <option value="US">United States</option>
-                <option value="CA">Canada</option>
-              </select>
-            </label>
-          </div>
-        </section>
+        <ShippingForm
+          shipping={shipping}
+          onChange={setShipping}
+          fieldErrors={fieldErrors}
+          onFieldErrorsChange={setFieldErrors}
+        />
 
         <ShippingNotice />
 
@@ -229,10 +202,6 @@ export default function CheckoutPage() {
                   <li>{paymentStatus.paypal.error}</li>
                 )}
               </ul>
-              <p className="mt-2 text-xs text-blue-900/80">
-                Edit <code className="rounded bg-blue-100 px-1">.env.local</code>, paste real
-                keys, then restart <code className="rounded bg-blue-100 px-1">npm run dev</code>.
-              </p>
             </div>
           )}
 
@@ -246,16 +215,14 @@ export default function CheckoutPage() {
             disabled={loading !== null || paymentStatus?.stripe.configured === false}
             onClick={() => handlePay("stripe")}
             className="rounded-lg bg-stone-900 py-3 font-medium text-white hover:bg-stone-700 disabled:opacity-50"
-            title={paymentStatus?.stripe.error || undefined}
           >
-            {loading === "stripe" ? "Redirecting…" : "Pay with card (Stripe)"}
+            {loading === "stripe" ? "Redirecting…" : "Pay with card or Alipay"}
           </button>
           <button
             type="button"
             disabled={loading !== null || paymentStatus?.paypal.configured === false}
             onClick={() => handlePay("paypal")}
             className="rounded-lg border border-stone-300 bg-white py-3 font-medium hover:bg-stone-50 disabled:opacity-50"
-            title={paymentStatus?.paypal.error || undefined}
           >
             {loading === "paypal" ? "Redirecting…" : "Pay with PayPal"}
           </button>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuthNav } from "@/components/AuthNav";
 import { SHOP_NAME } from "@/lib/constants";
 
 export function Header({ cartCount = 0 }: { cartCount?: number }) {
@@ -15,6 +16,13 @@ export function Header({ cartCount = 0 }: { cartCount?: number }) {
           <Link href="/cart" className="text-stone-600 hover:text-stone-900">
             Cart{cartCount > 0 ? ` (${cartCount})` : ""}
           </Link>
+          <Link href="/track" className="text-stone-600 hover:text-stone-900">
+            Track order
+          </Link>
+          <Link href="/contact" className="text-stone-600 hover:text-stone-900">
+            Contact
+          </Link>
+          <AuthNav />
           <Link href="/admin" className="text-stone-400 hover:text-stone-700">
             Admin
           </Link>

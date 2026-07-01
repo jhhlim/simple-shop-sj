@@ -3,24 +3,11 @@ import { SHIPPING_FEE } from "@/lib/constants";
 import { createOrder } from "@/lib/orders";
 import { getProduct } from "@/lib/products";
 import { paypalKeysProblem } from "@/lib/payments";
+import {
+  formatShippingForStorage,
+  validateShippingInfo,
+} from "@/lib/shipping-validation";
 import type { CartItem, ShippingInfo } from "@/lib/types";
-
-function validateShipping(shipping: ShippingInfo) {
-  const required: (keyof ShippingInfo)[] = [
-    "fullName",
-    "email",
-    "phone",
-    "street",
-    "city",
-    "state",
-    "zip",
-    "country",
-  ];
-  for (const key of required) {
-    if (!shipping[key]?.trim()) return false;
-  }
-  return true;
-}
 
 async function getPayPalAccessToken() {
   const clientId = process.env.PAYPAL_CLIENT_ID;
@@ -65,14 +52,17 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { items, shipping } = body as {
+  const { items, shipping: rawShipping } = body as {
     items: CartItem[];
     shipping: ShippingInfo;
   };
 
-  if (!items?.length || !validateShipping(shipping)) {
+  const shipping = formatShippingForStorage(rawShipping);
+  const { valid, errors } = validateShippingInfo(shipping);
+  if (!items?.length || !valid) {
+    const firstError = Object.values(errors)[0];
     return NextResponse.json(
-      { error: "Cart and complete shipping info are required" },
+      { error: firstError || "Cart and complete shipping info are required" },
       { status: 400 }
     );
   }
@@ -145,9 +135,10 @@ export async function POST(request: Request) {
           name: { full_name: shipping.fullName },
           address: {
             address_line_1: shipping.street,
+            ...(shipping.street2 ? { address_line_2: shipping.street2 } : {}),
             admin_area_2: shipping.city,
             admin_area_1: shipping.state,
-            postal_code: shipping.zip,
+            postal_code: shipping.zip.replace(/\s+/g, ""),
             country_code: shipping.country.slice(0, 2).toUpperCase(),
           },
         },

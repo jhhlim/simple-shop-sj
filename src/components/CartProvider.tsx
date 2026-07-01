@@ -6,8 +6,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { useSession } from "next-auth/react";
 import type { CartItem } from "@/lib/types";
 
 type CartContextValue = {
@@ -17,14 +19,19 @@ type CartContextValue = {
   setQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   totalItems: number;
+  isSyncing: boolean;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
 const STORAGE_KEY = "lim-resale-cart";
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
+  const { data: session, status } = useSession();
   const [items, setItems] = useState<CartItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const mergedForUser = useRef<string | null>(null);
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     try {
@@ -38,8 +45,75 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
+    if (session?.user?.id) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  }, [items, hydrated]);
+  }, [items, hydrated, session?.user?.id]);
+
+  useEffect(() => {
+    if (!hydrated || status !== "authenticated" || !session?.user?.id) return;
+    if (mergedForUser.current === session.user.id) return;
+
+    let cancelled = false;
+    setIsSyncing(true);
+
+    (async () => {
+      try {
+        const localRaw = localStorage.getItem(STORAGE_KEY);
+        const localItems: CartItem[] = localRaw ? JSON.parse(localRaw) : [];
+
+        const res = await fetch("/api/cart", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ localItems }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) {
+            setItems(data.items || []);
+            localStorage.removeItem(STORAGE_KEY);
+            mergedForUser.current = session.user.id;
+          }
+        }
+      } catch {
+        // keep local cart on failure
+      } finally {
+        if (!cancelled) setIsSyncing(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, status, session?.user?.id]);
+
+  useEffect(() => {
+    if (!hydrated || status !== "authenticated" || !session?.user?.id) return;
+    if (mergedForUser.current !== session.user.id) return;
+
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(async () => {
+      try {
+        await fetch("/api/cart", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items }),
+        });
+      } catch {
+        // ignore sync errors
+      }
+    }, 400);
+
+    return () => {
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+    };
+  }, [items, hydrated, status, session?.user?.id]);
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      mergedForUser.current = null;
+    }
+  }, [status]);
 
   const addItem = useCallback((productId: string) => {
     setItems((prev) => {
@@ -75,8 +149,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ items, addItem, removeItem, setQuantity, clearCart, totalItems }),
-    [items, addItem, removeItem, setQuantity, clearCart, totalItems]
+    () => ({ items, addItem, removeItem, setQuantity, clearCart, totalItems, isSyncing }),
+    [items, addItem, removeItem, setQuantity, clearCart, totalItems, isSyncing]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import type { Product } from "@/lib/types";
 
@@ -137,7 +138,10 @@ export default function AdminPage() {
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-2xl font-semibold">Manage listings</h1>
       <p className="mt-1 text-sm text-stone-600">
-        Add used goods and jewelry for sale.
+        Add used goods and jewelry for sale.{" "}
+        <Link href="/admin/orders" className="font-medium underline">
+          Fulfill orders →
+        </Link>
       </p>
 
       <form onSubmit={handleCreate} className="mt-6 space-y-4 rounded-xl border border-stone-200 bg-white p-5">

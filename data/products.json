@@ -1,1 +1,29 @@
-[]
+[
+  {
+    "name": "Gold Ring",
+    "description": "Vintage 14k",
+    "price": 45,
+    "category": "jewelry",
+    "imageUrl": "",
+    "id": "2ca2f58d-64d2-40c1-a176-58fe2df0284a",
+    "createdAt": "2026-07-01T19:47:12.618Z"
+  },
+  {
+    "name": "test",
+    "description": "1",
+    "price": 2,
+    "category": "goods",
+    "imageUrl": "",
+    "id": "f60fe5b1-8173-4380-95fd-29cbd6eb7aee",
+    "createdAt": "2026-07-01T19:48:51.815Z"
+  },
+  {
+    "name": "test",
+    "description": "test",
+    "price": 2,
+    "category": "goods",
+    "imageUrl": "/uploads/eee33a87-6901-466a-b0ee-8242f8c73d49.jpg",
+    "id": "4f32b4d4-263a-4b3a-9726-b330f6035e62",
+    "createdAt": "2026-07-01T20:06:06.231Z"
+  }
+]
