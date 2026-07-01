@@ -1,5 +1,5 @@
 export const STORAGE_ERROR_MESSAGE =
-  "Store database is not configured. In Vercel, open your project → Storage → Create Database (Postgres), connect it to this app, then redeploy.";
+  "Database not configured on Vercel. Add Neon: vercel.com/marketplace/neon → Install → connect to this project, OR set DATABASE_URL in Settings → Environment Variables, then Redeploy.";
 
 export function isVercelRuntime(): boolean {
   return process.env.VERCEL === "1";
@@ -10,7 +10,8 @@ export function assertCanPersistData(): void {
     process.env.POSTGRES_URL?.trim() ||
       process.env.POSTGRES_PRISMA_URL?.trim() ||
       process.env.POSTGRES_URL_NON_POOLING?.trim() ||
-      process.env.DATABASE_URL?.trim()
+      process.env.DATABASE_URL?.trim() ||
+      process.env.DATABASE_URL_UNPOOLED?.trim()
   );
   if (hasPostgres) return;
   if (isVercelRuntime()) {

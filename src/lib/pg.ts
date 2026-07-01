@@ -9,6 +9,7 @@ export function getPostgresUrl(): string | undefined {
     "POSTGRES_PRISMA_URL",
     "POSTGRES_URL_NON_POOLING",
     "DATABASE_URL",
+    "DATABASE_URL_UNPOOLED",
   ] as const;
   for (const key of keys) {
     const value = process.env[key]?.trim();
