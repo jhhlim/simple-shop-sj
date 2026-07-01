@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import { getDb } from "./db";
+import { ensureSchema, asRows, getSql, isPostgresEnabled } from "./pg";
 
 export type DbUser = {
   id: string;
@@ -14,33 +15,78 @@ export type DbUser = {
 
 const SALT_ROUNDS = 12;
 
-export function findUserById(id: string): DbUser | undefined {
+function mapUser(row: Record<string, unknown>): DbUser {
+  return row as DbUser;
+}
+
+export async function findUserById(id: string): Promise<DbUser | undefined> {
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    const rows = asRows<Record<string, unknown>>(
+      await getSql()`SELECT * FROM users WHERE id = ${id} LIMIT 1`
+    );
+    return rows[0] ? mapUser(rows[0] as Record<string, unknown>) : undefined;
+  }
   return getDb().prepare("SELECT * FROM users WHERE id = ?").get(id) as DbUser | undefined;
 }
 
-export function findUserByUsernameOrEmail(login: string): DbUser | undefined {
+export async function findUserByUsernameOrEmail(login: string): Promise<DbUser | undefined> {
   const value = login.trim().toLowerCase();
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    const rows = asRows<Record<string, unknown>>(
+      await getSql()`
+      SELECT * FROM users
+      WHERE lower(username) = ${value} OR lower(email) = ${value}
+      LIMIT 1
+    `
+    );
+    return rows[0] ? mapUser(rows[0] as Record<string, unknown>) : undefined;
+  }
   return getDb()
     .prepare("SELECT * FROM users WHERE lower(username) = ? OR lower(email) = ?")
     .get(value, value) as DbUser | undefined;
 }
 
-export function findUserByEmail(email: string): DbUser | undefined {
+export async function findUserByEmail(email: string): Promise<DbUser | undefined> {
+  const value = email.trim().toLowerCase();
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    const rows = asRows<Record<string, unknown>>(
+      await getSql()`SELECT * FROM users WHERE lower(email) = ${value} LIMIT 1`
+    );
+    return rows[0] ? mapUser(rows[0] as Record<string, unknown>) : undefined;
+  }
   return getDb()
     .prepare("SELECT * FROM users WHERE lower(email) = ?")
-    .get(email.trim().toLowerCase()) as DbUser | undefined;
+    .get(value) as DbUser | undefined;
 }
 
-export function findUserByGoogleId(googleId: string): DbUser | undefined {
+export async function findUserByGoogleId(googleId: string): Promise<DbUser | undefined> {
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    const rows = asRows<Record<string, unknown>>(
+      await getSql()`SELECT * FROM users WHERE google_id = ${googleId} LIMIT 1`
+    );
+    return rows[0] ? mapUser(rows[0] as Record<string, unknown>) : undefined;
+  }
   return getDb()
     .prepare("SELECT * FROM users WHERE google_id = ?")
     .get(googleId) as DbUser | undefined;
 }
 
-export function findUserByUsername(username: string): DbUser | undefined {
+export async function findUserByUsername(username: string): Promise<DbUser | undefined> {
+  const value = username.trim().toLowerCase();
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    const rows = asRows<Record<string, unknown>>(
+      await getSql()`SELECT * FROM users WHERE lower(username) = ${value} LIMIT 1`
+    );
+    return rows[0] ? mapUser(rows[0] as Record<string, unknown>) : undefined;
+  }
   return getDb()
     .prepare("SELECT * FROM users WHERE lower(username) = ?")
-    .get(username.trim().toLowerCase()) as DbUser | undefined;
+    .get(value) as DbUser | undefined;
 }
 
 export async function verifyPassword(user: DbUser, password: string): Promise<boolean> {
@@ -65,6 +111,23 @@ export async function createUserWithPassword(input: {
     created_at: new Date().toISOString(),
   };
 
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    await getSql()`
+      INSERT INTO users (id, username, email, password_hash, name, google_id, created_at)
+      VALUES (
+        ${user.id},
+        ${user.username},
+        ${user.email},
+        ${user.password_hash},
+        ${user.name},
+        ${user.google_id},
+        ${user.created_at}
+      )
+    `;
+    return user;
+  }
+
   getDb()
     .prepare(
       `INSERT INTO users (id, username, email, password_hash, name, google_id, created_at)
@@ -75,31 +138,37 @@ export async function createUserWithPassword(input: {
   return user;
 }
 
-export function createOrLinkGoogleUser(input: {
+export async function createOrLinkGoogleUser(input: {
   email: string;
   name?: string | null;
   googleId: string;
-}): DbUser {
-  const db = getDb();
+}): Promise<DbUser> {
   const email = input.email.trim().toLowerCase();
 
-  const byGoogle = findUserByGoogleId(input.googleId);
+  const byGoogle = await findUserByGoogleId(input.googleId);
   if (byGoogle) return byGoogle;
 
-  const byEmail = findUserByEmail(email);
+  const byEmail = await findUserByEmail(email);
   if (byEmail) {
-    db.prepare("UPDATE users SET google_id = ?, name = COALESCE(name, ?) WHERE id = ?").run(
-      input.googleId,
-      input.name || byEmail.name,
-      byEmail.id
-    );
-    return findUserById(byEmail.id)!;
+    if (isPostgresEnabled()) {
+      await ensureSchema();
+      await getSql()`
+        UPDATE users
+        SET google_id = ${input.googleId}, name = COALESCE(name, ${input.name || byEmail.name})
+        WHERE id = ${byEmail.id}
+      `;
+    } else {
+      getDb()
+        .prepare("UPDATE users SET google_id = ?, name = COALESCE(name, ?) WHERE id = ?")
+        .run(input.googleId, input.name || byEmail.name, byEmail.id);
+    }
+    return (await findUserById(byEmail.id))!;
   }
 
   const baseUsername = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 20);
   let username = baseUsername || `user_${input.googleId.slice(0, 8)}`;
   let suffix = 1;
-  while (findUserByUsername(username)) {
+  while (await findUserByUsername(username)) {
     username = `${baseUsername}_${suffix++}`;
   }
 
@@ -113,19 +182,38 @@ export function createOrLinkGoogleUser(input: {
     created_at: new Date().toISOString(),
   };
 
-  db.prepare(
-    `INSERT INTO users (id, username, email, password_hash, name, google_id, created_at)
-     VALUES (@id, @username, @email, @password_hash, @name, @google_id, @created_at)`
-  ).run(user);
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    await getSql()`
+      INSERT INTO users (id, username, email, password_hash, name, google_id, created_at)
+      VALUES (
+        ${user.id},
+        ${user.username},
+        ${user.email},
+        ${user.password_hash},
+        ${user.name},
+        ${user.google_id},
+        ${user.created_at}
+      )
+    `;
+    return user;
+  }
+
+  getDb()
+    .prepare(
+      `INSERT INTO users (id, username, email, password_hash, name, google_id, created_at)
+       VALUES (@id, @username, @email, @password_hash, @name, @google_id, @created_at)`
+    )
+    .run(user);
 
   return user;
 }
 
-export function validateRegistration(input: {
+export async function validateRegistration(input: {
   username: string;
   email: string;
   password: string;
-}): string | null {
+}): Promise<string | null> {
   const username = input.username.trim();
   const email = input.email.trim();
   const password = input.password;
@@ -142,7 +230,7 @@ export function validateRegistration(input: {
   if (password.length < 8) {
     return "Password must be at least 8 characters";
   }
-  if (findUserByUsername(username)) return "Username is already taken";
-  if (findUserByEmail(email)) return "Email is already registered";
+  if (await findUserByUsername(username)) return "Username is already taken";
+  if (await findUserByEmail(email)) return "Email is already registered";
   return null;
 }

@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { SHIPPING_FEE } from "@/lib/constants";
 import { createOrder } from "@/lib/orders";
-import { getProduct } from "@/lib/products";
 import { stripeKeyProblem } from "@/lib/payments";
+import { buildCartPricing } from "@/lib/pricing";
 import {
   formatShippingForStorage,
   validateShippingInfo,
@@ -19,9 +18,10 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { items, shipping: rawShipping } = body as {
+    const { items, shipping: rawShipping, couponCode } = body as {
       items: CartItem[];
       shipping: ShippingInfo;
+      couponCode?: string | null;
     };
 
     const shipping = formatShippingForStorage(rawShipping);
@@ -34,47 +34,41 @@ export async function POST(request: Request) {
       );
     }
 
-    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
-    const orderItems: {
-      productId: string;
-      name: string;
-      price: number;
-      quantity: number;
-    }[] = [];
-    let subtotal = 0;
+    const { lines, totals, error: pricingError } = await buildCartPricing(items, couponCode);
+    if (pricingError || lines.length === 0) {
+      return NextResponse.json(
+        { error: pricingError || "Could not calculate order total" },
+        { status: 400 }
+      );
+    }
 
-    for (const item of items) {
-      const product = await getProduct(item.productId);
-      if (!product) {
-        return NextResponse.json(
-          { error: `Product not found: ${item.productId}` },
-          { status: 400 }
-        );
-      }
-      subtotal += product.price * item.quantity;
-      orderItems.push({
-        productId: product.id,
-        name: product.name,
-        price: product.price,
-        quantity: item.quantity,
-      });
-      lineItems.push({
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = lines.map(
+      ({ product, item }) => ({
         price_data: {
           currency: "usd",
           product_data: { name: product.name, description: product.description },
           unit_amount: Math.round(product.price * 100),
         },
         quantity: item.quantity,
-      });
-    }
+      })
+    );
 
-    const total = subtotal + SHIPPING_FEE;
+    const orderItems = lines.map(({ product, item }) => ({
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      quantity: item.quantity,
+    }));
+
     const order = await createOrder({
       items: orderItems,
       shipping,
-      subtotal,
-      shippingFee: SHIPPING_FEE,
-      total,
+      subtotal: totals.subtotal,
+      shippingFee: totals.shippingFee,
+      discount: totals.discount,
+      discountPercent: totals.discountPercent,
+      couponCode: totals.couponCode || undefined,
+      total: totals.total,
       paymentMethod: "stripe",
     });
 
@@ -82,7 +76,7 @@ export async function POST(request: Request) {
       price_data: {
         currency: "usd",
         product_data: { name: "Flat-rate shipping" },
-        unit_amount: Math.round(SHIPPING_FEE * 100),
+        unit_amount: Math.round(totals.shippingFee * 100),
       },
       quantity: 1,
     });
@@ -90,7 +84,7 @@ export async function POST(request: Request) {
     const stripe = new Stripe(stripeKey!);
     const origin = request.headers.get("origin") || "http://localhost:3000";
 
-    const session = await stripe.checkout.sessions.create({
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
       customer_email: shipping.email,
       line_items: lineItems,
@@ -98,7 +92,19 @@ export async function POST(request: Request) {
       success_url: `${origin}/success?order=${order.id}`,
       cancel_url: `${origin}/checkout`,
       metadata: { orderId: order.id },
-    });
+    };
+
+    if (totals.discount > 0) {
+      const coupon = await stripe.coupons.create({
+        amount_off: Math.round(totals.discount * 100),
+        currency: "usd",
+        duration: "once",
+        name: totals.couponCode || "Discount",
+      });
+      sessionParams.discounts = [{ coupon: coupon.id }];
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     return NextResponse.json({ url: session.url });
   } catch (err) {

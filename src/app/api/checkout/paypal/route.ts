@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { SHIPPING_FEE } from "@/lib/constants";
 import { createOrder } from "@/lib/orders";
-import { getProduct } from "@/lib/products";
 import { paypalKeysProblem } from "@/lib/payments";
+import { buildCartPricing } from "@/lib/pricing";
 import {
   formatShippingForStorage,
   validateShippingInfo,
@@ -52,9 +51,10 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { items, shipping: rawShipping } = body as {
+  const { items, shipping: rawShipping, couponCode } = body as {
     items: CartItem[];
     shipping: ShippingInfo;
+    couponCode?: string | null;
   };
 
   const shipping = formatShippingForStorage(rawShipping);
@@ -67,55 +67,54 @@ export async function POST(request: Request) {
     );
   }
 
-  const orderItems: {
-    productId: string;
-    name: string;
-    price: number;
-    quantity: number;
-  }[] = [];
-  let subtotal = 0;
-  const paypalItems: {
-    name: string;
-    unit_amount: { currency_code: string; value: string };
-    quantity: string;
-  }[] = [];
-
-  for (const item of items) {
-    const product = await getProduct(item.productId);
-    if (!product) {
-      return NextResponse.json(
-        { error: `Product not found: ${item.productId}` },
-        { status: 400 }
-      );
-    }
-    subtotal += product.price * item.quantity;
-    orderItems.push({
-      productId: product.id,
-      name: product.name,
-      price: product.price,
-      quantity: item.quantity,
-    });
-    paypalItems.push({
-      name: product.name.slice(0, 127),
-      unit_amount: {
-        currency_code: "USD",
-        value: product.price.toFixed(2),
-      },
-      quantity: String(item.quantity),
-    });
+  const { lines, totals, error: pricingError } = await buildCartPricing(items, couponCode);
+  if (pricingError || lines.length === 0) {
+    return NextResponse.json(
+      { error: pricingError || "Could not calculate order total" },
+      { status: 400 }
+    );
   }
 
-  const total = subtotal + SHIPPING_FEE;
+  const orderItems = lines.map(({ product, item }) => ({
+    productId: product.id,
+    name: product.name,
+    price: product.price,
+    quantity: item.quantity,
+  }));
+
+  const paypalItems = lines.map(({ product, item }) => ({
+    name: product.name.slice(0, 127),
+    unit_amount: {
+      currency_code: "USD",
+      value: product.price.toFixed(2),
+    },
+    quantity: String(item.quantity),
+  }));
+
   const order = await createOrder({
     items: orderItems,
     shipping,
-    subtotal,
-    shippingFee: SHIPPING_FEE,
-    total,
+    subtotal: totals.subtotal,
+    shippingFee: totals.shippingFee,
+    discount: totals.discount,
+    discountPercent: totals.discountPercent,
+    couponCode: totals.couponCode || undefined,
+    total: totals.total,
     paymentMethod: "paypal",
   });
 
   const origin = request.headers.get("origin") || "http://localhost:3000";
+
+  const breakdown: Record<string, { currency_code: string; value: string }> = {
+    item_total: { currency_code: "USD", value: totals.subtotal.toFixed(2) },
+    shipping: { currency_code: "USD", value: totals.shippingFee.toFixed(2) },
+  };
+  if (totals.discount > 0) {
+    breakdown.discount = {
+      currency_code: "USD",
+      value: totals.discount.toFixed(2),
+    };
+  }
 
   const paypalOrder = {
     intent: "CAPTURE",
@@ -124,11 +123,8 @@ export async function POST(request: Request) {
         reference_id: order.id,
         amount: {
           currency_code: "USD",
-          value: total.toFixed(2),
-          breakdown: {
-            item_total: { currency_code: "USD", value: subtotal.toFixed(2) },
-            shipping: { currency_code: "USD", value: SHIPPING_FEE.toFixed(2) },
-          },
+          value: totals.total.toFixed(2),
+          breakdown,
         },
         items: paypalItems,
         shipping: {

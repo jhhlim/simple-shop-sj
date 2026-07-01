@@ -12,8 +12,13 @@ import {
 import { useSession } from "next-auth/react";
 import type { CartItem } from "@/lib/types";
 
+const STORAGE_KEY = "lim-resale-cart";
+const COUPON_KEY = "lim-resale-coupon";
+
 type CartContextValue = {
   items: CartItem[];
+  couponCode: string | null;
+  setCouponCode: (code: string | null) => void;
   addItem: (productId: string) => void;
   removeItem: (productId: string) => void;
   setQuantity: (productId: string, quantity: number) => void;
@@ -23,11 +28,11 @@ type CartContextValue = {
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
-const STORAGE_KEY = "lim-resale-cart";
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
   const [items, setItems] = useState<CartItem[]>([]);
+  const [couponCode, setCouponCodeState] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const mergedForUser = useRef<string | null>(null);
@@ -37,6 +42,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) setItems(JSON.parse(raw) as CartItem[]);
+      const savedCoupon = localStorage.getItem(COUPON_KEY);
+      if (savedCoupon) setCouponCodeState(savedCoupon);
     } catch {
       setItems([]);
     }
@@ -115,6 +122,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [status]);
 
+  const setCouponCode = useCallback((code: string | null) => {
+    setCouponCodeState(code);
+    if (code) localStorage.setItem(COUPON_KEY, code);
+    else localStorage.removeItem(COUPON_KEY);
+  }, []);
+
   const addItem = useCallback((productId: string) => {
     setItems((prev) => {
       const existing = prev.find((i) => i.productId === productId);
@@ -149,8 +162,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ items, addItem, removeItem, setQuantity, clearCart, totalItems, isSyncing }),
-    [items, addItem, removeItem, setQuantity, clearCart, totalItems, isSyncing]
+    () => ({
+      items,
+      couponCode,
+      setCouponCode,
+      addItem,
+      removeItem,
+      setQuantity,
+      clearCart,
+      totalItems,
+      isSyncing,
+    }),
+    [items, couponCode, setCouponCode, addItem, removeItem, setQuantity, clearCart, totalItems, isSyncing]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

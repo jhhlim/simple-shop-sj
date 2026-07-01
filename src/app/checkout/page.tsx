@@ -4,9 +4,10 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useCart } from "@/components/CartProvider";
+import { CouponField } from "@/components/CouponField";
 import { ShippingForm } from "@/components/ShippingForm";
 import { ShippingNotice } from "@/components/ShippingNotice";
-import { SHIPPING_FEE } from "@/lib/constants";
+import type { OrderTotals } from "@/lib/pricing";
 import {
   formatShippingForStorage,
   validateShippingInfo,
@@ -28,12 +29,13 @@ const emptyShipping: ShippingInfo = {
 
 export default function CheckoutPage() {
   const { data: session } = useSession();
-  const { items } = useCart();
+  const { items, couponCode, setCouponCode } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [shipping, setShipping] = useState<ShippingInfo>(emptyShipping);
   const [fieldErrors, setFieldErrors] = useState<ShippingFieldErrors>({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState<"stripe" | "paypal" | null>(null);
+  const [totals, setTotals] = useState<OrderTotals | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<{
     stripe: { configured: boolean; error: string | null };
     paypal: { configured: boolean; error: string | null };
@@ -75,8 +77,24 @@ export default function CheckoutPage() {
     }[];
   }, [items, products]);
 
-  const subtotal = lines.reduce((sum, l) => sum + l.lineTotal, 0);
-  const total = subtotal + (lines.length > 0 ? SHIPPING_FEE : 0);
+  useEffect(() => {
+    if (items.length === 0) {
+      setTotals(null);
+      return;
+    }
+    fetch("/api/cart/pricing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, couponCode }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) setError(data.error);
+        else setError("");
+        setTotals(data.totals || null);
+      })
+      .catch(() => setTotals(null));
+  }, [items, couponCode]);
 
   function validateBeforePay(): ShippingInfo | null {
     const formatted = formatShippingForStorage(shipping);
@@ -87,6 +105,10 @@ export default function CheckoutPage() {
       return null;
     }
     setShipping(formatted);
+    if (totals && couponCode && !totals.couponCode) {
+      setError("Invalid or expired coupon code.");
+      return null;
+    }
     setError("");
     return formatted;
   }
@@ -101,7 +123,7 @@ export default function CheckoutPage() {
       const res = await fetch(`/api/checkout/${method}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items, shipping: validShipping }),
+        body: JSON.stringify({ items, shipping: validShipping, couponCode }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
       if (!res.ok) {
@@ -168,6 +190,8 @@ export default function CheckoutPage() {
           onFieldErrorsChange={setFieldErrors}
         />
 
+        <CouponField couponCode={couponCode} onApply={setCouponCode} />
+
         <ShippingNotice />
 
         <section className="rounded-xl border border-stone-200 bg-white p-5 text-sm">
@@ -180,13 +204,22 @@ export default function CheckoutPage() {
               <span>${lineTotal.toFixed(2)}</span>
             </div>
           ))}
+          {totals && totals.discount > 0 && (
+            <div className="flex justify-between py-1 text-green-800">
+              <span>
+                Discount ({totals.discountPercent}%)
+                {totals.couponCode ? ` — ${totals.couponCode}` : ""}
+              </span>
+              <span>-${totals.discount.toFixed(2)}</span>
+            </div>
+          )}
           <div className="mt-2 flex justify-between border-t border-stone-200 pt-2">
             <span>Shipping</span>
-            <span>${SHIPPING_FEE.toFixed(2)}</span>
+            <span>${(totals?.shippingFee ?? 5).toFixed(2)}</span>
           </div>
           <div className="mt-2 flex justify-between text-base font-semibold">
             <span>Total</span>
-            <span>${total.toFixed(2)}</span>
+            <span>${(totals?.total ?? lines.reduce((s, l) => s + l.lineTotal, 0) + 5).toFixed(2)}</span>
           </div>
         </section>
 

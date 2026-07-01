@@ -1,7 +1,21 @@
 import { getDb } from "./db";
+import { ensureSchema, asRows, getSql, isPostgresEnabled } from "./pg";
 import type { CartItem } from "./types";
 
-export function getUserCart(userId: string): CartItem[] {
+export async function getUserCart(userId: string): Promise<CartItem[]> {
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    const rows = asRows<CartItem>(
+      await getSql()`
+      SELECT product_id AS "productId", quantity
+      FROM cart_items
+      WHERE user_id = ${userId}
+      ORDER BY product_id
+    `
+    );
+    return rows;
+  }
+
   const rows = getDb()
     .prepare(
       `SELECT product_id as productId, quantity FROM cart_items WHERE user_id = ? ORDER BY product_id`
@@ -10,7 +24,22 @@ export function getUserCart(userId: string): CartItem[] {
   return rows;
 }
 
-export function saveUserCart(userId: string, items: CartItem[]): void {
+export async function saveUserCart(userId: string, items: CartItem[]): Promise<void> {
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    const sql = getSql();
+    await sql`DELETE FROM cart_items WHERE user_id = ${userId}`;
+    for (const item of items) {
+      if (item.quantity > 0) {
+        await sql`
+          INSERT INTO cart_items (user_id, product_id, quantity)
+          VALUES (${userId}, ${item.productId}, ${item.quantity})
+        `;
+      }
+    }
+    return;
+  }
+
   const db = getDb();
   const save = db.transaction((cartItems: CartItem[]) => {
     db.prepare("DELETE FROM cart_items WHERE user_id = ?").run(userId);

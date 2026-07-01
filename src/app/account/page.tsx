@@ -11,8 +11,8 @@ export default async function AccountPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const user = findUserById(session.user.id);
-  const cart = getUserCart(session.user.id);
+  const user = await findUserById(session.user.id);
+  const cart = await getUserCart(session.user.id);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-12">

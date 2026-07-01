@@ -4,13 +4,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/components/CartProvider";
+import { CouponField } from "@/components/CouponField";
 import { ShippingNotice } from "@/components/ShippingNotice";
-import { SHIPPING_FEE } from "@/lib/constants";
 import type { Product } from "@/lib/types";
+import type { OrderTotals } from "@/lib/pricing";
+
+type Totals = OrderTotals;
 
 export default function CartPage() {
-  const { items, setQuantity, removeItem } = useCart();
+  const { items, setQuantity, removeItem, couponCode, setCouponCode } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
+  const [totals, setTotals] = useState<Totals | null>(null);
 
   useEffect(() => {
     fetch("/api/products")
@@ -33,8 +37,22 @@ export default function CartPage() {
     }[];
   }, [items, products]);
 
-  const subtotal = lines.reduce((sum, l) => sum + l.lineTotal, 0);
-  const total = subtotal + (lines.length > 0 ? SHIPPING_FEE : 0);
+  useEffect(() => {
+    if (items.length === 0) {
+      setTotals(null);
+      return;
+    }
+    fetch("/api/cart/pricing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, couponCode }),
+    })
+      .then((r) => r.json())
+      .then((data) => setTotals(data.totals || null))
+      .catch(() => setTotals(null));
+  }, [items, couponCode]);
+
+  const subtotal = totals?.subtotal ?? lines.reduce((sum, l) => sum + l.lineTotal, 0);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -104,6 +122,8 @@ export default function CartPage() {
             ))}
           </div>
 
+          <CouponField couponCode={couponCode} onApply={setCouponCode} />
+
           <ShippingNotice />
 
           <div className="rounded-xl border border-stone-200 bg-white p-4 text-sm">
@@ -111,13 +131,22 @@ export default function CartPage() {
               <span>Subtotal</span>
               <span>${subtotal.toFixed(2)}</span>
             </div>
+            {totals && totals.discount > 0 && (
+              <div className="flex justify-between py-1 text-green-800">
+                <span>
+                  Discount ({totals.discountPercent}%)
+                  {totals.couponCode ? ` — ${totals.couponCode}` : ""}
+                </span>
+                <span>-${totals.discount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between py-1">
               <span>Shipping</span>
-              <span>${SHIPPING_FEE.toFixed(2)}</span>
+              <span>${(totals?.shippingFee ?? 5).toFixed(2)}</span>
             </div>
             <div className="mt-2 flex justify-between border-t border-stone-200 pt-2 text-base font-semibold">
               <span>Total</span>
-              <span>${total.toFixed(2)}</span>
+              <span>${(totals?.total ?? subtotal + 5).toFixed(2)}</span>
             </div>
           </div>
 

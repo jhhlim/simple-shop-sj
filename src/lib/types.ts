@@ -35,6 +35,9 @@ export type Order = {
   shipping: ShippingInfo;
   subtotal: number;
   shippingFee: number;
+  discount?: number;
+  discountPercent?: number;
+  couponCode?: string;
   total: number;
   paymentMethod: "stripe" | "paypal" | "alipay";
   status: OrderStatus;

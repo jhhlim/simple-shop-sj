@@ -10,7 +10,7 @@ export async function GET() {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
-  const items = getUserCart(session.user.id);
+  const items = await getUserCart(session.user.id);
   return NextResponse.json({ items });
 }
 
@@ -29,7 +29,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Invalid cart items" }, { status: 400 });
   }
 
-  saveUserCart(session.user.id, items);
+  await saveUserCart(session.user.id, items);
   return NextResponse.json({ items });
 }
 
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const localItems = (body.localItems || []) as CartItem[];
-  const serverItems = getUserCart(session.user.id);
+  const serverItems = await getUserCart(session.user.id);
   const merged = mergeCarts(localItems, serverItems);
   saveUserCart(session.user.id, merged);
   return NextResponse.json({ items: merged });

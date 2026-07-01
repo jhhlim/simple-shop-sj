@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { username, email, password, name } = body;
 
-  const error = validateRegistration({ username, email, password });
+  const error = await validateRegistration({ username, email, password });
   if (error) {
     return NextResponse.json({ error }, { status: 400 });
   }

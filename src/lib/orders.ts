@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
+import { ensureSchema, asRows, getSql, isPostgresEnabled } from "./pg";
 import type { Order, TrackingStatus } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -10,7 +11,7 @@ async function ensureDataDir() {
   await fs.mkdir(DATA_DIR, { recursive: true });
 }
 
-async function readOrders(): Promise<Order[]> {
+async function readOrdersFile(): Promise<Order[]> {
   await ensureDataDir();
   try {
     const raw = await fs.readFile(ORDERS_FILE, "utf-8");
@@ -20,9 +21,49 @@ async function readOrders(): Promise<Order[]> {
   }
 }
 
-async function writeOrders(orders: Order[]) {
+async function writeOrdersFile(orders: Order[]) {
   await ensureDataDir();
   await fs.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2));
+}
+
+async function readOrders(): Promise<Order[]> {
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    const rows = asRows<{ payload: Order }>(await getSql()`SELECT payload FROM orders`);
+    return rows.map((row) => row.payload);
+  }
+  return readOrdersFile();
+}
+
+async function writeOrder(order: Order) {
+  if (isPostgresEnabled()) {
+    await ensureSchema();
+    const payload = JSON.stringify(order);
+    await getSql()`
+      INSERT INTO orders (id, payload)
+      VALUES (${order.id}, ${payload}::jsonb)
+      ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload
+    `;
+    return;
+  }
+
+  const orders = await readOrdersFile();
+  const index = orders.findIndex((o) => o.id === order.id);
+  if (index >= 0) orders[index] = order;
+  else orders.push(order);
+  await writeOrdersFile(orders);
+}
+
+async function updateOrderMutator(
+  id: string,
+  mutate: (order: Order) => void
+): Promise<Order | null> {
+  const orders = await readOrders();
+  const order = orders.find((o) => o.id === id);
+  if (!order) return null;
+  mutate(order);
+  await writeOrder(order);
+  return order;
 }
 
 export async function getOrders(): Promise<Order[]> {
@@ -56,23 +97,18 @@ export async function applyShippoLabel(
     labelCost?: number;
   }
 ): Promise<Order | null> {
-  const orders = await readOrders();
-  const order = orders.find((o) => o.id === id);
-  if (!order) return null;
-
-  order.status = "shipped";
-  order.trackingNumber = input.trackingNumber;
-  order.trackingCarrier = input.trackingCarrier;
-  order.trackingUrl = input.trackingUrl;
-  order.labelUrl = input.labelUrl;
-  order.shippoTransactionId = input.shippoTransactionId;
-  order.shippoShipmentId = input.shippoShipmentId;
-  order.labelCost = input.labelCost;
-  order.trackingStatus = "pre_transit";
-  order.shippedAt = new Date().toISOString();
-
-  await writeOrders(orders);
-  return order;
+  return updateOrderMutator(id, (order) => {
+    order.status = "shipped";
+    order.trackingNumber = input.trackingNumber;
+    order.trackingCarrier = input.trackingCarrier;
+    order.trackingUrl = input.trackingUrl;
+    order.labelUrl = input.labelUrl;
+    order.shippoTransactionId = input.shippoTransactionId;
+    order.shippoShipmentId = input.shippoShipmentId;
+    order.labelCost = input.labelCost;
+    order.trackingStatus = "pre_transit";
+    order.shippedAt = new Date().toISOString();
+  });
 }
 
 export async function updateTrackingStatus(
@@ -82,34 +118,25 @@ export async function updateTrackingStatus(
     deliveredAt?: string;
   }
 ): Promise<Order | null> {
-  const orders = await readOrders();
-  const order = orders.find((o) => o.id === id);
-  if (!order) return null;
-
-  order.trackingStatus = input.trackingStatus;
-  if (input.deliveredAt) {
-    order.deliveredAt = input.deliveredAt;
-    order.status = "shipped";
-  }
-
-  await writeOrders(orders);
-  return order;
+  return updateOrderMutator(id, (order) => {
+    order.trackingStatus = input.trackingStatus;
+    if (input.deliveredAt) {
+      order.deliveredAt = input.deliveredAt;
+      order.status = "shipped";
+    }
+  });
 }
 
 export async function markInTransitEmailSent(id: string): Promise<void> {
-  const orders = await readOrders();
-  const order = orders.find((o) => o.id === id);
-  if (!order) return;
-  order.inTransitEmailSentAt = new Date().toISOString();
-  await writeOrders(orders);
+  await updateOrderMutator(id, (order) => {
+    order.inTransitEmailSentAt = new Date().toISOString();
+  });
 }
 
 export async function markDeliveredEmailSent(id: string): Promise<void> {
-  const orders = await readOrders();
-  const order = orders.find((o) => o.id === id);
-  if (!order) return;
-  order.deliveredEmailSentAt = new Date().toISOString();
-  await writeOrders(orders);
+  await updateOrderMutator(id, (order) => {
+    order.deliveredEmailSentAt = new Date().toISOString();
+  });
 }
 
 export async function getOrderForCustomer(
@@ -127,26 +154,21 @@ export async function getOrderForCustomer(
 export async function createOrder(
   input: Omit<Order, "id" | "createdAt" | "status">
 ): Promise<Order> {
-  const orders = await readOrders();
   const order: Order = {
     ...input,
     id: randomUUID(),
     status: "pending",
     createdAt: new Date().toISOString(),
   };
-  orders.push(order);
-  await writeOrders(orders);
+  await writeOrder(order);
   return order;
 }
 
 export async function markOrderPaid(id: string, paymentId: string) {
-  const orders = await readOrders();
-  const order = orders.find((o) => o.id === id);
-  if (!order) return null;
-  order.status = "paid";
-  order.paymentId = paymentId;
-  await writeOrders(orders);
-  return order;
+  return updateOrderMutator(id, (order) => {
+    order.status = "paid";
+    order.paymentId = paymentId;
+  });
 }
 
 export async function markOrderShipped(
@@ -158,32 +180,24 @@ export async function markOrderShipped(
     trackingEmailSentAt?: string;
   }
 ): Promise<Order | null> {
-  const orders = await readOrders();
-  const order = orders.find((o) => o.id === id);
-  if (!order) return null;
-
-  order.status = "shipped";
-  order.trackingNumber = input.trackingNumber.trim();
-  order.trackingCarrier = input.trackingCarrier.trim();
-  order.trackingUrl = input.trackingUrl?.trim() || buildTrackingUrl(
-    input.trackingCarrier,
-    input.trackingNumber
-  );
-  order.shippedAt = new Date().toISOString();
-  if (input.trackingEmailSentAt) {
-    order.trackingEmailSentAt = input.trackingEmailSentAt;
-  }
-
-  await writeOrders(orders);
-  return order;
+  return updateOrderMutator(id, (order) => {
+    order.status = "shipped";
+    order.trackingNumber = input.trackingNumber.trim();
+    order.trackingCarrier = input.trackingCarrier.trim();
+    order.trackingUrl =
+      input.trackingUrl?.trim() ||
+      buildTrackingUrl(input.trackingCarrier, input.trackingNumber);
+    order.shippedAt = new Date().toISOString();
+    if (input.trackingEmailSentAt) {
+      order.trackingEmailSentAt = input.trackingEmailSentAt;
+    }
+  });
 }
 
 export async function markTrackingEmailSent(id: string): Promise<void> {
-  const orders = await readOrders();
-  const order = orders.find((o) => o.id === id);
-  if (!order) return;
-  order.trackingEmailSentAt = new Date().toISOString();
-  await writeOrders(orders);
+  await updateOrderMutator(id, (order) => {
+    order.trackingEmailSentAt = new Date().toISOString();
+  });
 }
 
 function buildTrackingUrl(carrier: string, trackingNumber: string): string {

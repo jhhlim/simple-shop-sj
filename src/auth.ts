@@ -20,7 +20,7 @@ const providers: Provider[] = [
       const password = credentials?.password as string | undefined;
       if (!login?.trim() || !password) return null;
 
-      const user = findUserByUsernameOrEmail(login);
+      const user = await findUserByUsernameOrEmail(login);
       if (!user || !(await verifyPassword(user, password))) return null;
 
       return {
@@ -55,7 +55,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = profile?.email;
         const googleId = account.providerAccountId;
         if (!email || !googleId) return false;
-        createOrLinkGoogleUser({
+        await createOrLinkGoogleUser({
           email,
           name: profile?.name,
           googleId,
@@ -65,7 +65,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async jwt({ token, user, account, profile }) {
       if (account?.provider === "google" && profile?.email) {
-        const linked = createOrLinkGoogleUser({
+        const linked = await createOrLinkGoogleUser({
           email: profile.email,
           name: profile.name,
           googleId: account.providerAccountId,
