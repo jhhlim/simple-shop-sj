@@ -12,7 +12,7 @@ const geist = Geist({
 
 export const metadata: Metadata = {
   title: `${SHOP_NAME} — Used Goods & Jewelry`,
-  description: "Shop our curated used goods and jewelry. Flat $5 shipping with prepaid label sent to you.",
+  description: "Shop our curated used goods and jewelry. Flat $5 shipping — we pack and ship to you.",
 };
 
 export default function RootLayout({

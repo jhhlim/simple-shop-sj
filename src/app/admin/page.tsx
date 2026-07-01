@@ -30,7 +30,19 @@ export default function AdminPage() {
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
     if (!password) return;
+    setMessage("");
+    const res = await fetch("/api/admin/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setMessage(data.error || "Wrong password");
+      return;
+    }
     setLoggedIn(true);
+    setMessage("");
   }
 
   async function handleUpload(file: File) {
@@ -71,7 +83,11 @@ export default function AdminPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      setMessage(data.error || "Failed to create product");
+      setMessage(
+        data.error === "Unauthorized"
+          ? "Session expired or wrong password — log out and sign in again with your .env.local password."
+          : data.error || "Failed to create product"
+      );
       return;
     }
     setForm({ name: "", description: "", price: "", category: "goods", imageUrl: "" });
@@ -108,8 +124,11 @@ export default function AdminPage() {
           </button>
         </form>
         <p className="mt-3 text-xs text-stone-500">
-          Password is set via ADMIN_PASSWORD in your environment file.
+          Use the password from <code className="rounded bg-stone-100 px-1">ADMIN_PASSWORD</code> in{" "}
+          <code className="rounded bg-stone-100 px-1">.env.local</code> (default:{" "}
+          <code className="rounded bg-stone-100 px-1">change-me</code>).
         </p>
+        {message && <p className="mt-2 text-sm text-red-600">{message}</p>}
       </div>
     );
   }

@@ -12,7 +12,7 @@ No monthly Shopify fee — you host it yourself (locally or on [Vercel](https://
 - Shopping cart
 - Checkout with **required** shipping fields: name, email, phone, street, city, state, ZIP, country
 - **$5 flat shipping** on every order
-- Prominent notice: *we will mail you a prepaid shipping label after you order*
+- Prominent notice: *we pack your order and ship it to your address*
 - Stripe and PayPal checkout
 
 ## Quick start
@@ -47,7 +47,7 @@ Payment providers only charge per transaction — there is no platform subscript
 ## How shipping works
 
 - Every order adds a **$5 flat shipping fee** at checkout.
-- The site tells customers: **after you place your order, we will mail you a prepaid shipping label** so you can pack and ship the item.
+- The site tells customers: **we pack your order and ship it to the address you provide** ($5 flat shipping on every order).
 
 ## Data storage
 

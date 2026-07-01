@@ -24,12 +24,21 @@ export default function CheckoutPage() {
   const [shipping, setShipping] = useState<ShippingInfo>(emptyShipping);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState<"stripe" | "paypal" | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<{
+    stripe: { configured: boolean; error: string | null };
+    paypal: { configured: boolean; error: string | null };
+  } | null>(null);
 
   useEffect(() => {
     fetch("/api/products")
       .then((r) => r.json())
       .then(setProducts)
       .catch(() => setProducts([]));
+
+    fetch("/api/checkout/status")
+      .then((r) => r.json())
+      .then(setPaymentStatus)
+      .catch(() => setPaymentStatus(null));
   }, []);
 
   const lines = useMemo(() => {
@@ -63,16 +72,18 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items, shipping }),
       });
-      const data = await res.json();
+      const data = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
       if (!res.ok) {
         setError(data.error || "Checkout failed");
         return;
       }
       if (data.url) {
         window.location.href = data.url;
+        return;
       }
-    } catch {
-      setError("Something went wrong. Please try again.");
+      setError("No checkout URL returned. Check your payment configuration.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setLoading(null);
     }
@@ -206,6 +217,25 @@ export default function CheckoutPage() {
           </div>
         </section>
 
+        {paymentStatus &&
+          (!paymentStatus.stripe.configured || !paymentStatus.paypal.configured) && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+              <p className="font-medium">Payment setup needed (shop owner)</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {!paymentStatus.stripe.configured && (
+                  <li>{paymentStatus.stripe.error}</li>
+                )}
+                {!paymentStatus.paypal.configured && (
+                  <li>{paymentStatus.paypal.error}</li>
+                )}
+              </ul>
+              <p className="mt-2 text-xs text-blue-900/80">
+                Edit <code className="rounded bg-blue-100 px-1">.env.local</code>, paste real
+                keys, then restart <code className="rounded bg-blue-100 px-1">npm run dev</code>.
+              </p>
+            </div>
+          )}
+
         {error && (
           <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>
         )}
@@ -213,17 +243,19 @@ export default function CheckoutPage() {
         <div className="grid gap-3 sm:grid-cols-2">
           <button
             type="button"
-            disabled={loading !== null}
+            disabled={loading !== null || paymentStatus?.stripe.configured === false}
             onClick={() => handlePay("stripe")}
             className="rounded-lg bg-stone-900 py-3 font-medium text-white hover:bg-stone-700 disabled:opacity-50"
+            title={paymentStatus?.stripe.error || undefined}
           >
             {loading === "stripe" ? "Redirecting…" : "Pay with card (Stripe)"}
           </button>
           <button
             type="button"
-            disabled={loading !== null}
+            disabled={loading !== null || paymentStatus?.paypal.configured === false}
             onClick={() => handlePay("paypal")}
             className="rounded-lg border border-stone-300 bg-white py-3 font-medium hover:bg-stone-50 disabled:opacity-50"
+            title={paymentStatus?.paypal.error || undefined}
           >
             {loading === "paypal" ? "Redirecting…" : "Pay with PayPal"}
           </button>

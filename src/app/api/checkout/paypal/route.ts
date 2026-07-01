@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { SHIPPING_FEE } from "@/lib/constants";
 import { createOrder } from "@/lib/orders";
 import { getProduct } from "@/lib/products";
+import { paypalKeysProblem } from "@/lib/payments";
 import type { CartItem, ShippingInfo } from "@/lib/types";
 
 function validateShipping(shipping: ShippingInfo) {
@@ -47,13 +48,18 @@ async function getPayPalAccessToken() {
 }
 
 export async function POST(request: Request) {
+  const configError = paypalKeysProblem(
+    process.env.PAYPAL_CLIENT_ID,
+    process.env.PAYPAL_CLIENT_SECRET
+  );
+  if (configError) {
+    return NextResponse.json({ error: configError }, { status: 503 });
+  }
+
   const auth = await getPayPalAccessToken();
   if (!auth) {
     return NextResponse.json(
-      {
-        error:
-          "PayPal is not configured. Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET to .env.local",
-      },
+      { error: "PayPal login failed — double-check your client ID and secret." },
       { status: 503 }
     );
   }
