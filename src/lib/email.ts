@@ -1,9 +1,24 @@
 import { Resend } from "resend";
 import { SHOP_NAME } from "./constants";
+import { getPublicSiteUrl, isResendTestSender, RESEND_DOMAIN_HELP } from "./site-url";
 import type { Order } from "./types";
 
 export function emailConfigured(): boolean {
   return !!(process.env.RESEND_API_KEY && process.env.SHOP_EMAIL_FROM);
+}
+
+export function emailProductionReady(): boolean {
+  return emailConfigured() && !isResendTestSender();
+}
+
+export function resendSetupHint(): string | null {
+  if (!emailConfigured()) {
+    return "Add RESEND_API_KEY and SHOP_EMAIL_FROM to environment variables.";
+  }
+  if (isResendTestSender()) {
+    return RESEND_DOMAIN_HELP;
+  }
+  return null;
 }
 
 export async function sendShippingEmail(order: Order): Promise<{ ok: boolean; error?: string }> {
@@ -21,7 +36,7 @@ export async function sendShippingEmail(order: Order): Promise<{ ok: boolean; er
 
   const resend = new Resend(process.env.RESEND_API_KEY);
   const from = process.env.SHOP_EMAIL_FROM!;
-  const origin = process.env.AUTH_URL || "http://localhost:3000";
+  const origin = getPublicSiteUrl();
   const trackPage = `${origin}/track?order=${order.id}&email=${encodeURIComponent(order.shipping.email)}`;
 
   const itemLines = order.items
@@ -65,7 +80,7 @@ export async function sendOrderConfirmationEmail(
 
   const resend = new Resend(process.env.RESEND_API_KEY);
   const from = process.env.SHOP_EMAIL_FROM!;
-  const origin = process.env.AUTH_URL || "http://localhost:3000";
+  const origin = getPublicSiteUrl();
   const trackPage = `${origin}/track?order=${order.id}&email=${encodeURIComponent(order.shipping.email)}`;
 
   const { error } = await resend.emails.send({
@@ -89,7 +104,7 @@ export async function sendOrderConfirmationEmail(
 }
 
 function trackPageUrl(order: Order) {
-  const origin = process.env.AUTH_URL || "http://localhost:3000";
+  const origin = getPublicSiteUrl();
   return `${origin}/track?order=${order.id}&email=${encodeURIComponent(order.shipping.email)}`;
 }
 

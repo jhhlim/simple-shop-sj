@@ -12,6 +12,7 @@ export default function AdminOrdersPage() {
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
   const [shippoReady, setShippoReady] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [emailHint, setEmailHint] = useState<string | null>(null);
   const [shipForms, setShipForms] = useState<
     Record<string, { trackingNumber: string; trackingCarrier: string }>
   >({});
@@ -33,6 +34,7 @@ export default function AdminOrdersPage() {
     const data = await res.json();
     setShippoReady(!!data.shippo?.configured);
     setWebhookUrl(data.shippo?.webhookUrl || "");
+    setEmailHint(data.email?.setupHint || null);
   }
 
   useEffect(() => {
@@ -80,7 +82,7 @@ export default function AdminOrdersPage() {
     const cost = data.label?.cost ? ` (label cost: $${data.label.cost})` : "";
     if (data.email && !data.email.ok) {
       setMessage(
-        `Label created${cost}. Tracking: ${data.label.trackingNumber}. Email failed: ${data.email.error}`
+        `Label created${cost}. Tracking: ${data.label.trackingNumber}. Customer was NOT emailed — ${data.email.error} Fix: verify a domain at resend.com/domains and set SHOP_EMAIL_FROM on Vercel.`
       );
     } else {
       setMessage(
@@ -180,6 +182,21 @@ export default function AdminOrdersPage() {
             </p>
           )}
         </div>
+
+        {emailHint && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <p className="font-medium">Customer emails need a verified domain (Resend)</p>
+            <p className="mt-1">{emailHint}</p>
+            <p className="mt-2">
+              Until then, labels and tracking still work — copy the tracking number to the customer
+              manually, or email them from{" "}
+              <a href="mailto:limware@yahoo.com" className="underline">
+                limware@yahoo.com
+              </a>
+              .
+            </p>
+          </div>
+        )}
 
         {webhookUrl && (
           <details className="rounded-xl border border-stone-200 bg-white p-4 text-sm">
