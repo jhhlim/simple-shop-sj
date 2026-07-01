@@ -1,5 +1,6 @@
 import { getDb } from "./db";
 import { ensureSchema, asRows, getSql, isPostgresEnabled } from "./pg";
+import { assertCanPersistData } from "./storage";
 import type { CartItem } from "./types";
 
 export async function getUserCart(userId: string): Promise<CartItem[]> {
@@ -39,6 +40,8 @@ export async function saveUserCart(userId: string, items: CartItem[]): Promise<v
     }
     return;
   }
+
+  assertCanPersistData();
 
   const db = getDb();
   const save = db.transaction((cartItems: CartItem[]) => {

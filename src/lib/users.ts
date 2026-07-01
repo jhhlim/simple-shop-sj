@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import { getDb } from "./db";
 import { ensureSchema, asRows, getSql, isPostgresEnabled } from "./pg";
+import { assertCanPersistData } from "./storage";
 
 export type DbUser = {
   id: string;
@@ -98,7 +99,6 @@ export async function createUserWithPassword(input: {
   username: string;
   email: string;
   password: string;
-  name?: string;
 }): Promise<DbUser> {
   const password_hash = await bcrypt.hash(input.password, SALT_ROUNDS);
   const user: DbUser = {
@@ -106,7 +106,7 @@ export async function createUserWithPassword(input: {
     username: input.username.trim(),
     email: input.email.trim().toLowerCase(),
     password_hash,
-    name: input.name?.trim() || input.username.trim(),
+    name: input.username.trim(),
     google_id: null,
     created_at: new Date().toISOString(),
   };
@@ -127,6 +127,8 @@ export async function createUserWithPassword(input: {
     `;
     return user;
   }
+
+  assertCanPersistData();
 
   getDb()
     .prepare(
@@ -177,7 +179,7 @@ export async function createOrLinkGoogleUser(input: {
     username,
     email,
     password_hash: null,
-    name: input.name || username,
+    name: username,
     google_id: input.googleId,
     created_at: new Date().toISOString(),
   };
@@ -198,6 +200,8 @@ export async function createOrLinkGoogleUser(input: {
     `;
     return user;
   }
+
+  assertCanPersistData();
 
   getDb()
     .prepare(

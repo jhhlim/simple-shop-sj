@@ -1,18 +1,45 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { SUPPORT_EMAIL } from "@/lib/constants";
+import {
+  CONTACT_MESSAGE_MAX_LENGTH,
+  EMAIL_PATTERN,
+  SUPPORT_EMAIL,
+} from "@/lib/constants";
 
 export function ContactForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [orderId, setOrderId] = useState("");
   const [message, setMessage] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState("");
 
+  function validateEmail(value: string): boolean {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setEmailError("Email is required");
+      return false;
+    }
+    if (!EMAIL_PATTERN.test(trimmed)) {
+      setEmailError("Enter a valid email address");
+      return false;
+    }
+    setEmailError("");
+    return true;
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+
+    if (!validateEmail(email)) return;
+    if (message.trim().length > CONTACT_MESSAGE_MAX_LENGTH) {
+      setError(`Message must be ${CONTACT_MESSAGE_MAX_LENGTH} characters or less`);
+      setStatus("error");
+      return;
+    }
+
     setStatus("sending");
     setError("");
 
@@ -34,6 +61,7 @@ export function ContactForm() {
     setEmail("");
     setOrderId("");
     setMessage("");
+    setEmailError("");
   }
 
   if (status === "sent") {
@@ -69,9 +97,16 @@ export function ContactForm() {
           required
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
+          onChange={(e) => {
+            setEmail(e.target.value);
+            if (emailError) validateEmail(e.target.value);
+          }}
+          onBlur={() => email && validateEmail(email)}
+          className={`mt-1 w-full rounded-lg border px-3 py-2 ${
+            emailError ? "border-red-400" : "border-stone-300"
+          }`}
         />
+        {emailError && <p className="mt-1 text-sm text-red-600">{emailError}</p>}
       </label>
       <label className="block text-sm">
         Order ID <span className="text-stone-400">(optional)</span>
@@ -87,11 +122,15 @@ export function ContactForm() {
         <textarea
           required
           rows={5}
+          maxLength={CONTACT_MESSAGE_MAX_LENGTH}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="How can we help?"
           className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
         />
+        <span className="mt-1 block text-right text-xs text-stone-500">
+          {message.length}/{CONTACT_MESSAGE_MAX_LENGTH}
+        </span>
       </label>
       {error && (
         <p className="text-sm text-red-600">

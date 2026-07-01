@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
-import { SHOP_NAME, SUPPORT_EMAIL } from "@/lib/constants";
+import {
+  CONTACT_MESSAGE_MAX_LENGTH,
+  EMAIL_PATTERN,
+  SHOP_NAME,
+  SUPPORT_EMAIL,
+} from "@/lib/constants";
 import { emailConfigured } from "@/lib/email";
 
 export async function POST(request: Request) {
@@ -14,8 +19,17 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) {
+  const emailValue = String(email).trim();
+  if (!EMAIL_PATTERN.test(emailValue)) {
     return NextResponse.json({ error: "Enter a valid email address" }, { status: 400 });
+  }
+
+  const messageText = String(message).trim();
+  if (messageText.length > CONTACT_MESSAGE_MAX_LENGTH) {
+    return NextResponse.json(
+      { error: `Message must be ${CONTACT_MESSAGE_MAX_LENGTH} characters or less` },
+      { status: 400 }
+    );
   }
 
   if (!emailConfigured()) {
@@ -33,16 +47,16 @@ export async function POST(request: Request) {
   const { error } = await resend.emails.send({
     from,
     to: SUPPORT_EMAIL,
-    replyTo: String(email).trim(),
+    replyTo: emailValue,
     subject: `[${SHOP_NAME}] Customer support — ${String(name).trim()}`,
     html: `
       <div style="font-family: sans-serif; max-width: 560px;">
         <h2>Customer support request</h2>
         <p><strong>From:</strong> ${String(name).trim()}</p>
-        <p><strong>Email:</strong> ${String(email).trim()}</p>
+        <p><strong>Email:</strong> ${emailValue}</p>
         ${orderId ? `<p><strong>Order ID:</strong> ${String(orderId).trim()}</p>` : ""}
         <hr />
-        <p style="white-space: pre-wrap;">${String(message).trim()}</p>
+        <p style="white-space: pre-wrap;">${messageText}</p>
       </div>
     `,
   });

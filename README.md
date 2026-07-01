@@ -1,4 +1,4 @@
-# Lim Resale Shop
+# LIMWARE Shop
 
 A simple, free-to-run online shop for listing **used goods and jewelry**. Customers can browse, add items to cart, and pay with **Stripe (credit card)** or **PayPal**.
 
@@ -118,7 +118,7 @@ Guests keep their cart in the browser. Signed-in users sync carts to the databas
 
 **Resend** ([resend.com](https://resend.com)):
 1. Verify your domain (required to email customers — `onboarding@resend.dev` only works for your own email)
-2. `RESEND_API_KEY` + `SHOP_EMAIL_FROM=Lim Resale <orders@yourdomain.com>`
+2. `RESEND_API_KEY` + `SHOP_EMAIL_FROM=LIMWARE <orders@yourdomain.com>`
 
 ### Manual fallback
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Header } from "@/components/Header";
+import { CookieConsent } from "@/components/CookieConsent";
 import { useCart } from "@/components/CartProvider";
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -22,6 +23,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </a>
         </p>
       </footer>
+      <CookieConsent />
     </>
   );
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { FormEvent, useEffect, useState } from "react";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 export default function LoginPage() {
   const [login, setLogin] = useState("");
@@ -10,12 +11,14 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/status")
       .then((r) => r.json())
       .then((d) => setGoogleEnabled(!!d.google))
-      .catch(() => setGoogleEnabled(false));
+      .catch(() => setGoogleEnabled(false))
+      .finally(() => setAuthChecked(true));
   }, []);
 
   async function handleSubmit(e: FormEvent) {
@@ -48,28 +51,18 @@ export default function LoginPage() {
         .
       </p>
 
-      {googleEnabled && (
+      {authChecked && googleEnabled && (
         <>
-          <button
-            type="button"
-            onClick={() => signIn("google", { callbackUrl: "/" })}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white py-3 font-medium hover:bg-stone-50"
-          >
-            Continue with Google
-          </button>
+          <div className="mt-6">
+            <GoogleSignInButton label="Sign in with Google" />
+          </div>
 
           <div className="my-6 flex items-center gap-3 text-xs text-stone-400">
             <div className="h-px flex-1 bg-stone-200" />
-            or sign in with username
+            or use username &amp; password
             <div className="h-px flex-1 bg-stone-200" />
           </div>
         </>
-      )}
-
-      {!googleEnabled && (
-        <p className="mt-4 text-xs text-stone-500">
-          Google sign-in is not configured yet — use username/password or continue as guest.
-        </p>
       )}
 
       <form onSubmit={handleSubmit} className={`space-y-4 ${googleEnabled ? "" : "mt-6"}`}>

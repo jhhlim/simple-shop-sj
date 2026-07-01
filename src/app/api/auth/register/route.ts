@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { username, email, password, name } = body;
+  const { username, email, password } = body;
 
   const error = await validateRegistration({ username, email, password });
   if (error) {
@@ -17,7 +17,6 @@ export async function POST(request: Request) {
       username,
       email,
       password,
-      name,
     });
     return NextResponse.json(
       { id: user.id, username: user.username, email: user.email },

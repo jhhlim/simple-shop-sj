@@ -3,21 +3,23 @@
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { FormEvent, useEffect, useState } from "react";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/status")
       .then((r) => r.json())
       .then((d) => setGoogleEnabled(!!d.google))
-      .catch(() => setGoogleEnabled(false));
+      .catch(() => setGoogleEnabled(false))
+      .finally(() => setAuthChecked(true));
   }, []);
 
   async function handleSubmit(e: FormEvent) {
@@ -28,7 +30,7 @@ export default function RegisterPage() {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, email, password, name }),
+      body: JSON.stringify({ username, email, password }),
     });
     const data = await res.json();
 
@@ -63,15 +65,11 @@ export default function RegisterPage() {
         .
       </p>
 
-      {googleEnabled && (
+      {authChecked && googleEnabled && (
         <>
-          <button
-            type="button"
-            onClick={() => signIn("google", { callbackUrl: "/" })}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white py-3 font-medium hover:bg-stone-50"
-          >
-            Sign up with Google
-          </button>
+          <div className="mt-6">
+            <GoogleSignInButton label="Sign up with Google" />
+          </div>
 
           <div className="my-6 flex items-center gap-3 text-xs text-stone-400">
             <div className="h-px flex-1 bg-stone-200" />
@@ -99,14 +97,6 @@ export default function RegisterPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
-          />
-        </label>
-        <label className="block text-sm">
-          Display name <span className="text-stone-400">(optional)</span>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
             className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
           />
         </label>

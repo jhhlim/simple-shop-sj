@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import { ensureSchema, asRows, getSql, isPostgresEnabled } from "./pg";
+import { assertCanPersistData } from "./storage";
 import type { Product } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -111,6 +112,8 @@ export async function createProduct(
     return product;
   }
 
+  assertCanPersistData();
+
   const products = await readProductsFile();
   products.push(product);
   await writeProductsFile(products);
@@ -125,6 +128,8 @@ export async function deleteProduct(id: string): Promise<boolean> {
     );
     return rows.length > 0;
   }
+
+  assertCanPersistData();
 
   const products = await readProductsFile();
   const next = products.filter((p) => p.id !== id);

@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import { ensureSchema, asRows, getSql, isPostgresEnabled } from "./pg";
+import { assertCanPersistData } from "./storage";
 import type { Order, TrackingStatus } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -46,6 +47,8 @@ async function writeOrder(order: Order) {
     `;
     return;
   }
+
+  assertCanPersistData();
 
   const orders = await readOrdersFile();
   const index = orders.findIndex((o) => o.id === order.id);

@@ -25,7 +25,7 @@ const providers: Provider[] = [
 
       return {
         id: user.id,
-        name: user.name || user.username,
+        name: user.username,
         email: user.email,
       };
     },
@@ -71,16 +71,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           googleId: account.providerAccountId,
         });
         token.sub = linked.id;
-        token.name = linked.name || linked.username;
+        token.name = linked.username;
         token.email = linked.email;
       } else if (user?.id) {
         token.sub = user.id;
+        if (user.name) token.name = user.name;
+        if (user.email) token.email = user.email;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub;
+        if (token.name) session.user.name = token.name as string;
       }
       return session;
     },

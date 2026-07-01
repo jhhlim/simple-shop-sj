@@ -6,6 +6,7 @@ import {
   formatShippingForStorage,
   validateShippingInfo,
 } from "@/lib/shipping-validation";
+import { STORAGE_ERROR_MESSAGE } from "@/lib/storage";
 import type { CartItem, ShippingInfo } from "@/lib/types";
 
 async function getPayPalAccessToken() {
@@ -91,19 +92,20 @@ export async function POST(request: Request) {
     quantity: String(item.quantity),
   }));
 
-  const order = await createOrder({
-    items: orderItems,
-    shipping,
-    subtotal: totals.subtotal,
-    shippingFee: totals.shippingFee,
-    discount: totals.discount,
-    discountPercent: totals.discountPercent,
-    couponCode: totals.couponCode || undefined,
-    total: totals.total,
-    paymentMethod: "paypal",
-  });
+  try {
+    const order = await createOrder({
+      items: orderItems,
+      shipping,
+      subtotal: totals.subtotal,
+      shippingFee: totals.shippingFee,
+      discount: totals.discount,
+      discountPercent: totals.discountPercent,
+      couponCode: totals.couponCode || undefined,
+      total: totals.total,
+      paymentMethod: "paypal",
+    });
 
-  const origin = request.headers.get("origin") || "http://localhost:3000";
+    const origin = request.headers.get("origin") || "http://localhost:3000";
 
   const breakdown: Record<string, { currency_code: string; value: string }> = {
     item_total: { currency_code: "USD", value: totals.subtotal.toFixed(2) },
@@ -168,4 +170,13 @@ export async function POST(request: Request) {
   const approve = data.links.find((l) => l.rel === "approve");
 
   return NextResponse.json({ url: approve?.href, orderId: data.id });
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : "PayPal checkout failed";
+    const message =
+      raw.includes("EROFS") || raw.includes("read-only file system")
+        ? STORAGE_ERROR_MESSAGE
+        : raw;
+    const status = message === STORAGE_ERROR_MESSAGE ? 503 : 500;
+    return NextResponse.json({ error: message }, { status });
+  }
 }

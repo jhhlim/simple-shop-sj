@@ -7,6 +7,7 @@ import {
   formatShippingForStorage,
   validateShippingInfo,
 } from "@/lib/shipping-validation";
+import { STORAGE_ERROR_MESSAGE } from "@/lib/storage";
 import type { CartItem, ShippingInfo } from "@/lib/types";
 
 export async function POST(request: Request) {
@@ -108,8 +109,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ url: session.url });
   } catch (err) {
+    const raw = err instanceof Error ? err.message : "Stripe checkout failed";
     const message =
-      err instanceof Error ? err.message : "Stripe checkout failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+      raw.includes("EROFS") || raw.includes("read-only file system")
+        ? STORAGE_ERROR_MESSAGE
+        : raw;
+    const status = message === STORAGE_ERROR_MESSAGE ? 503 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

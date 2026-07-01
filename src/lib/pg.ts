@@ -4,7 +4,17 @@ import path from "path";
 import type { Product } from "./types";
 
 export function getPostgresUrl(): string | undefined {
-  return process.env.POSTGRES_URL?.trim() || process.env.DATABASE_URL?.trim();
+  const keys = [
+    "POSTGRES_URL",
+    "POSTGRES_PRISMA_URL",
+    "POSTGRES_URL_NON_POOLING",
+    "DATABASE_URL",
+  ] as const;
+  for (const key of keys) {
+    const value = process.env[key]?.trim();
+    if (value) return value;
+  }
+  return undefined;
 }
 
 export function isPostgresEnabled(): boolean {

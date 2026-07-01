@@ -86,7 +86,7 @@ export default function AdminPage() {
     if (!res.ok) {
       setMessage(
         data.error === "Unauthorized"
-          ? "Session expired or wrong password — log out and sign in again with your .env.local password."
+          ? "Session expired or wrong password — log out and sign in again."
           : data.error || "Failed to create product"
       );
       return;
@@ -124,11 +124,6 @@ export default function AdminPage() {
             Enter
           </button>
         </form>
-        <p className="mt-3 text-xs text-stone-500">
-          Use the password from <code className="rounded bg-stone-100 px-1">ADMIN_PASSWORD</code> in{" "}
-          <code className="rounded bg-stone-100 px-1">.env.local</code> (default:{" "}
-          <code className="rounded bg-stone-100 px-1">change-me</code>).
-        </p>
         {message && <p className="mt-2 text-sm text-red-600">{message}</p>}
       </div>
     );
