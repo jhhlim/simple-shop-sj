@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LegalPage } from "@/components/LegalPage";
-import { SHOP_NAME, SUPPORT_EMAIL, SUPPORT_PHONE } from "@/lib/constants";
+import { SHOP_NAME, SUPPORT_EMAIL, SUPPORT_PHONE, SUPPORT_PHONE_DISPLAY } from "@/lib/constants";
 
 export const metadata = {
   title: `Privacy Policy — ${SHOP_NAME}`,
@@ -162,7 +162,7 @@ export default function PrivacyPolicyPage() {
         <li>
           Phone:{" "}
           <a href={`tel:${SUPPORT_PHONE}`} className="underline">
-            {SUPPORT_PHONE}
+            {SUPPORT_PHONE_DISPLAY}
           </a>
         </li>
         <li>
