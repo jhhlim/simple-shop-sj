@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ContactForm } from "./ContactForm";
-import { SHOP_NAME, SUPPORT_EMAIL, SUPPORT_PHONE, SUPPORT_PHONE_DISPLAY } from "@/lib/constants";
+import { SHOP_NAME, SUPPORT_EMAIL } from "@/lib/constants";
 
 export const metadata = {
   title: `Contact — ${SHOP_NAME}`,
@@ -21,12 +21,6 @@ export default function ContactPage() {
           Email:{" "}
           <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium text-stone-900 underline">
             {SUPPORT_EMAIL}
-          </a>
-        </p>
-        <p>
-          Phone:{" "}
-          <a href={`tel:${SUPPORT_PHONE}`} className="font-medium text-stone-900 underline">
-            {SUPPORT_PHONE_DISPLAY}
           </a>
         </p>
         <p className="text-sm text-stone-500">

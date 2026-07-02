@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LegalPage } from "@/components/LegalPage";
-import { SHIPPING_FEE, SHOP_NAME, SUPPORT_EMAIL, SUPPORT_PHONE, SUPPORT_PHONE_DISPLAY } from "@/lib/constants";
+import { SHIPPING_FEE, SHOP_NAME, SUPPORT_EMAIL } from "@/lib/constants";
 
 export const metadata = {
   title: `Terms & Conditions — ${SHOP_NAME}`,
@@ -162,12 +162,6 @@ export default function TermsPage() {
           Email:{" "}
           <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
             {SUPPORT_EMAIL}
-          </a>
-        </li>
-        <li>
-          Phone:{" "}
-          <a href={`tel:${SUPPORT_PHONE}`} className="underline">
-            {SUPPORT_PHONE_DISPLAY}
           </a>
         </li>
         <li>
