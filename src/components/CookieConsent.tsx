@@ -38,11 +38,15 @@ export function CookieConsent() {
       <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-stone-700">
           {SHOP_NAME} uses essential cookies for your cart, sign-in session, and site functionality.
-          By continuing to use this site, you agree to our use of cookies.{" "}
-          <Link href="/contact" className="font-medium underline">
-            Contact us
+          By continuing to use this site, you agree to our{" "}
+          <Link href="/privacy" className="font-medium underline">
+            Privacy Policy
           </Link>{" "}
-          with questions.
+          and{" "}
+          <Link href="/terms" className="font-medium underline">
+            Terms
+          </Link>
+          .
         </p>
         <button
           type="button"

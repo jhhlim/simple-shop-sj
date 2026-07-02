@@ -242,6 +242,18 @@ export default function CheckoutPage() {
           <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>
         )}
 
+        <p className="text-xs text-stone-500">
+          By placing an order, you agree to our{" "}
+          <Link href="/terms" className="underline">
+            Terms &amp; Conditions
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline">
+            Privacy Policy
+          </Link>
+          . All sales are final unless noted in the listing.
+        </p>
+
         <div className="grid gap-3 sm:grid-cols-2">
           <button
             type="button"

@@ -17,7 +17,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <main className="flex-1">{children}</main>
       <footer className="border-t border-stone-200 bg-stone-50 py-6 text-center text-sm text-stone-500">
         <p>Used goods &amp; jewelry — all sales final unless noted in listing.</p>
-        <p className="mt-2">
+        <p className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <a href="/terms" className="underline hover:text-stone-800">
+            Terms
+          </a>
+          <span aria-hidden>·</span>
+          <a href="/privacy" className="underline hover:text-stone-800">
+            Privacy
+          </a>
+          <span aria-hidden>·</span>
           <a href="/contact" className="underline hover:text-stone-800">
             Customer support
           </a>
