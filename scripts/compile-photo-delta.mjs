@@ -247,7 +247,7 @@ const listingsNotOnEbayScrape = listings
     price: l.price,
     category: l.category,
     hasLocalPhoto: photoSkus.has(l.sku.toLowerCase()) ? "yes" : "no",
-    reason: "not in scraped eBay pages 1-5 (178 items)",
+    reason: "not in scraped eBay seller pages",
   }));
 
 const downloadResults = { downloaded: [], errors: [] };
@@ -334,7 +334,7 @@ const summary = {
   },
   notes: [
     "Square CSV = limware shop catalog SKUs (source of truth for bulk photo matching).",
-    "eBay scrape = pages 1-5 only (~178 items). Live eBay ~227 means ~49 listings were never scraped.",
+    "eBay scrape = seller store pages (see ebay-all-items.json item count).",
     "listings-missing-photos = Square SKUs with no file in mass-upload-photos.",
     "listings-not-on-ebay-scrape = Square listings with no title match in scraped eBay JSON.",
     "ebay-not-downloaded = scraped eBay item matched SKU but no local photo (downloadable if still on eBay).",
@@ -353,7 +353,7 @@ Generated: ${summary.generatedAt}
 |--------|------:|
 | Square import listings (with SKU) | ${listings.length} |
 | Local photos (\`mass-upload-photos\`) | ${photoSkus.size} |
-| eBay scraped items (pages 1–5) | ${ebayItems.length} |
+| eBay scraped items | ${ebayItems.length} |
 | **Listings missing local photo** | **${listingsMissingPhotos.length}** |
 | Photos with no Square SKU | ${photosWithoutListing.length} |
 | eBay items matched to SKU | ${ebayMatched.length} |
@@ -364,7 +364,7 @@ Generated: ${summary.generatedAt}
 ## Where is the delta?
 
 1. **${listings.length - photoSkus.size} listings vs photos** — Square has ${listings.length} SKUs; only ${photoSkus.size} photos exist locally.
-2. **~${listings.length - ebayItems.length} listings vs eBay scrape** — Scrape captured ${ebayItems.length} items; live eBay has ~227. Pages beyond 5 (or pagination gaps) were not scraped.
+2. **${listings.length - ebayItems.length} listings vs eBay scrape** — Scrape captured ${ebayItems.length} items; Square has ${listings.length} SKUs.
 3. **${listingsNotOnEbayScrape.length} listings not on scraped eBay** — In Square but no title match in \`ebay-all-items.json\` (never scraped, delisted on eBay, or title mismatch).
 4. **${ebayNotDownloaded.length} eBay matches without photo** — Item was scraped and SKU matched, but no \`{SKU}.jpg\` in mass-upload-photos (should be 0 if scrape+download was complete).
 
@@ -380,7 +380,7 @@ Generated: ${summary.generatedAt}
 ## Next steps
 
 1. Bulk upload \`mass-upload-photos\` + \`mass-upload-delta/photos\` via admin Import.
-2. Re-scrape eBay pages 6+ for remaining ~${Math.max(0, 227 - ebayItems.length)} live listings.
+2. Re-scrape eBay seller pages if \`listings-not-on-ebay-scrape.csv\` is non-empty.
 3. For \`listings-not-on-ebay-scrape.csv\`, add Image URL in spreadsheet or photograph manually.
 `;
 
