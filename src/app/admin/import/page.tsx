@@ -46,7 +46,24 @@ const COLUMNS = [
   { col: "Image URL", note: "optional" },
 ];
 
-const PHOTO_FETCH_TIMEOUT_MS = 90_000;
+const PHOTO_FETCH_TIMEOUT_MS = 120_000;
+const PHOTO_MAX_RETRIES = 4;
+const PHOTO_RETRY_BASE_MS = 1_500;
+const PHOTO_GAP_MS = 350;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableUploadError(error?: string): boolean {
+  if (!error) return false;
+  return (
+    error === "Failed to fetch" ||
+    error === "Timed out" ||
+    error === "NetworkError when attempting to fetch resource." ||
+    /^Upload failed \(5\d\d\)$/.test(error)
+  );
+}
 
 function emptyPhotoResult(): PhotoResult {
   return {
@@ -60,23 +77,8 @@ function emptyPhotoResult(): PhotoResult {
 }
 
 function chunkPhotoFiles(files: File[]): File[][] {
-  const maxBytes = 2.5 * 1024 * 1024;
-  const maxCount = 3;
-  const chunks: File[][] = [];
-  let current: File[] = [];
-  let size = 0;
-
-  for (const file of files) {
-    if (current.length > 0 && (current.length >= maxCount || size + file.size > maxBytes)) {
-      chunks.push(current);
-      current = [];
-      size = 0;
-    }
-    current.push(file);
-    size += file.size;
-  }
-  if (current.length) chunks.push(current);
-  return chunks;
+  // One file per request is most reliable on Vercel (avoids body limits and connection drops).
+  return files.map((file) => [file]);
 }
 
 async function uploadPhotoBatch(batch: File[]): Promise<PhotoResult & { error?: string }> {
@@ -88,9 +90,19 @@ async function uploadPhotoBatch(batch: File[]): Promise<PhotoResult & { error?: 
     const res = await fetch("/api/admin/import/photos", {
       method: "POST",
       body,
+      credentials: "same-origin",
       signal: controller.signal,
     });
-    const data = (await res.json()) as PhotoResult & { error?: string };
+    const raw = await res.text();
+    let data: PhotoResult & { error?: string };
+    try {
+      data = JSON.parse(raw) as PhotoResult & { error?: string };
+    } catch {
+      return {
+        ...emptyPhotoResult(),
+        error: res.ok ? "Invalid server response" : `Upload failed (${res.status})`,
+      };
+    }
     if (!res.ok) {
       return { ...emptyPhotoResult(), error: data.error || `Upload failed (${res.status})` };
     }
@@ -106,6 +118,19 @@ async function uploadPhotoBatch(batch: File[]): Promise<PhotoResult & { error?: 
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function uploadPhotoWithRetry(batch: File[]): Promise<PhotoResult & { error?: string }> {
+  let result = await uploadPhotoBatch(batch);
+  if (!result.error) return result;
+
+  for (let attempt = 1; attempt < PHOTO_MAX_RETRIES && isRetryableUploadError(result.error); attempt++) {
+    await sleep(PHOTO_RETRY_BASE_MS * attempt);
+    result = await uploadPhotoBatch(batch);
+    if (!result.error) return result;
+  }
+
+  return result;
 }
 
 function mergePhotoResults(target: PhotoResult, source: PhotoResult) {
@@ -191,31 +216,21 @@ export default function AdminImportPage() {
       errors: [],
     };
 
-    let done = 0;
     for (let batchIndex = 0; batchIndex < chunks.length; batchIndex++) {
       const batch = chunks[batchIndex]!;
-      setPhotoProgress(
-        `Uploading batch ${batchIndex + 1} of ${chunks.length} (${done + 1}–${done + batch.length} of ${list.length})…`
-      );
+      const file = batch[0]!;
+      setPhotoProgress(`Uploading ${file.name} (${batchIndex + 1} of ${list.length})…`);
 
-      const data = await uploadPhotoBatch(batch);
-      done += batch.length;
+      const data = await uploadPhotoWithRetry(batch);
 
       if (!data.error) {
         mergePhotoResults(combined, data);
+        if (batchIndex < chunks.length - 1) await sleep(PHOTO_GAP_MS);
         continue;
       }
 
-      for (let i = 0; i < batch.length; i++) {
-        const file = batch[i]!;
-        setPhotoProgress(`Retrying ${file.name} (${done - batch.length + i + 1} of ${list.length})…`);
-        const single = await uploadPhotoBatch([file]);
-        if (single.error) {
-          combined.errors.push(`${file.name}: ${single.error}`);
-          continue;
-        }
-        mergePhotoResults(combined, single);
-      }
+      combined.errors.push(`${file.name}: ${data.error}`);
+      if (batchIndex < chunks.length - 1) await sleep(PHOTO_GAP_MS);
     }
 
     setLoading(null);
@@ -400,8 +415,8 @@ export default function AdminImportPage() {
         />
         {photoFiles.length > 0 && (
           <p className="text-sm text-stone-600">
-            {photoFiles.length} file(s) selected — uploads run in small batches (~3 photos at a
-            time). Large sets may take several minutes.
+            {photoFiles.length} file(s) selected — uploads run one at a time with automatic retries.
+            Large sets may take several minutes; keep this tab open.
           </p>
         )}
         <button
