@@ -51,7 +51,7 @@ const PHOTO_FETCH_TIMEOUT_MS = 120_000;
 const PHOTO_MAX_RETRIES = 4;
 const PHOTO_RETRY_BASE_MS = 1_500;
 const PHOTO_GAP_MS = 350;
-const PHOTO_ACCEPT = "image/*,.heic,.heif,image/heic,image/heif";
+const PHOTO_ACCEPT = "image/*,.heic,.heif";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

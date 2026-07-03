@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useAdminGate } from "@/components/AdminAuth";
 import {
   PRODUCT_CATEGORIES,
@@ -39,15 +39,16 @@ const emptyForm: ListingForm = {
   sku: "",
 };
 
-const PHOTO_ACCEPT = "image/*,.heic,.heif,image/heic,image/heif";
+/** Broad accept so browsers do not block JPG/HEIC selection. */
+const PHOTO_ACCEPT = "image/*,.heic,.heif";
 
 /**
- * Preview only public http(s) URLs, or local /uploads/ paths from dev storage.
- * Empty, relative-on-Vercel, and unloadable (e.g. HEIC mislabeled as JPEG) show "No photo".
+ * Preview public http(s) URLs, local blob: previews, or /uploads/ in dev.
  */
 function canPreviewImageUrl(src: string): boolean {
   const value = src.trim();
   if (!value) return false;
+  if (value.startsWith("blob:")) return true;
   if (isPublicImageUrl(value)) return true;
   // /uploads/ only exists on local disk — never durable on Vercel.
   return value.startsWith("/uploads/") && process.env.NODE_ENV !== "production";
@@ -107,15 +108,78 @@ function AdminThumb({ src, alt }: { src: string; alt: string }) {
   );
 }
 
+function PhotoFieldStatus({
+  uploading,
+  error,
+  fileName,
+}: {
+  uploading: boolean;
+  error: string;
+  fileName: string;
+}) {
+  if (uploading) {
+    return (
+      <p className="mt-1 text-xs font-medium text-stone-600">
+        Uploading{fileName ? ` “${fileName}”` : ""}…
+      </p>
+    );
+  }
+  if (error) {
+    return <p className="mt-1 text-xs font-medium text-red-600">{error}</p>;
+  }
+  if (fileName) {
+    return <p className="mt-1 text-xs text-stone-500">Selected: {fileName}</p>;
+  }
+  return null;
+}
+
 export default function AdminPage() {
   const { ready } = useAdminGate();
   const [products, setProducts] = useState<Product[]>([]);
   const [message, setMessage] = useState("");
   const [form, setForm] = useState(emptyForm);
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState<"create" | "edit" | null>(null);
+  const [photoError, setPhotoError] = useState<{ create: string; edit: string }>({
+    create: "",
+    edit: "",
+  });
+  const [photoFileName, setPhotoFileName] = useState<{ create: string; edit: string }>({
+    create: "",
+    edit: "",
+  });
   const [describing, setDescribing] = useState<"create" | "edit" | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
+  const createPreviewRef = useRef<string | null>(null);
+  const editPreviewRef = useRef<string | null>(null);
+
+  function revokePreview(target: "create" | "edit") {
+    const ref = target === "create" ? createPreviewRef : editPreviewRef;
+    if (ref.current) {
+      URL.revokeObjectURL(ref.current);
+      ref.current = null;
+    }
+  }
+
+  function setLocalPreview(target: "create" | "edit", file: File) {
+    revokePreview(target);
+    const localUrl = URL.createObjectURL(file);
+    if (target === "create") {
+      createPreviewRef.current = localUrl;
+      setForm((f) => ({ ...f, imageUrl: localUrl }));
+    } else {
+      editPreviewRef.current = localUrl;
+      setEditForm((f) => ({ ...f, imageUrl: localUrl }));
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      revokePreview("create");
+      revokePreview("edit");
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup object URLs on unmount only
+  }, []);
 
   async function loadProducts() {
     const res = await fetch("/api/products");
@@ -129,33 +193,102 @@ export default function AdminPage() {
   }, [ready]);
 
   async function handleUpload(file: File, target: "create" | "edit") {
-    setUploading(true);
+    setUploading(target);
     setMessage("");
+    setPhotoError((prev) => ({ ...prev, [target]: "" }));
+    setPhotoFileName((prev) => ({ ...prev, [target]: file.name }));
+    // Always show a local preview immediately — do not wait for upload.
+    setLocalPreview(target, file);
+
     try {
-      const uploadFile = await prepareImageForUpload(file);
-      const body = new FormData();
-      body.append("file", uploadFile);
-      const res = await fetch("/api/upload", { method: "POST", body });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      const url = typeof data.url === "string" ? data.url : "";
-      if (!isPublicImageUrl(url) && !url.startsWith("/uploads/")) {
-        throw new Error("Upload did not return a usable image URL");
+      // HEIC only: convert to JPEG. JPG/PNG/WebP pass through unchanged.
+      let uploadFile: File = file;
+      try {
+        uploadFile = await prepareImageForUpload(file);
+      } catch (prepErr) {
+        throw new Error(
+          prepErr instanceof Error
+            ? prepErr.message
+            : "Could not prepare photo for upload"
+        );
       }
-      if (target === "create") setForm((f) => ({ ...f, imageUrl: url }));
-      else setEditForm((f) => ({ ...f, imageUrl: url }));
+      if (uploadFile !== file) {
+        setLocalPreview(target, uploadFile);
+      }
+
+      const body = new FormData();
+      // Two-arg append preserves File name + type (image/jpeg, etc.).
+      body.append("file", uploadFile);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body,
+        credentials: "same-origin",
+      });
+
+      const raw = await res.text();
+      let data: { url?: string; error?: string } = {};
+      try {
+        data = raw ? (JSON.parse(raw) as { url?: string; error?: string }) : {};
+      } catch {
+        throw new Error(
+          res.ok
+            ? "Invalid server response"
+            : `Upload failed (${res.status}): ${raw.slice(0, 160) || res.statusText}`
+        );
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || `Upload failed (${res.status})`);
+      }
+
+      const url = typeof data.url === "string" ? data.url.trim() : "";
+      if (!isPublicImageUrl(url) && !url.startsWith("/uploads/")) {
+        throw new Error(
+          `Upload did not return a usable image URL${url ? ` (got: ${url.slice(0, 80)})` : ""}`
+        );
+      }
+
+      revokePreview(target);
+      if (target === "create") {
+        setForm((f) => ({ ...f, imageUrl: url }));
+      } else {
+        setEditForm((f) => ({ ...f, imageUrl: url }));
+      }
       setMessage("Image uploaded.");
+      setPhotoError((prev) => ({ ...prev, [target]: "" }));
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Upload failed");
+      const errorText = err instanceof Error ? err.message : "Upload failed";
+      setPhotoError((prev) => ({ ...prev, [target]: errorText }));
+      setMessage(errorText);
+      // Keep local blob: preview so the user still sees what they picked.
     } finally {
-      setUploading(false);
+      setUploading(null);
     }
+  }
+
+  function onPhotoSelected(target: "create" | "edit", input: HTMLInputElement) {
+    const file = input.files?.[0] ?? null;
+    // Reset so the same file can be re-selected after a failed upload.
+    input.value = "";
+    if (!file) {
+      setPhotoError((prev) => ({
+        ...prev,
+        [target]: "No file was selected. Try again, or pick a JPG/PNG/WebP photo.",
+      }));
+      return;
+    }
+    void handleUpload(file, target);
   }
 
   async function handleGenerateDescription(target: "create" | "edit") {
     const imageUrl = target === "create" ? form.imageUrl : editForm.imageUrl;
-    if (!imageUrl.trim()) {
+    if (!imageUrl.trim() || imageUrl.startsWith("blob:")) {
       setMessage("Upload a photo first, then generate a description.");
+      setPhotoError((prev) => ({
+        ...prev,
+        [target]: "Wait for the photo upload to finish before generating a description.",
+      }));
       return;
     }
 
@@ -194,6 +327,14 @@ export default function AdminPage() {
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setMessage("");
+    if (uploading === "create") {
+      setMessage("Wait for the photo upload to finish.");
+      return;
+    }
+    if (form.imageUrl.startsWith("blob:")) {
+      setMessage("Photo upload did not finish. Fix the photo error and try again.");
+      return;
+    }
     const sku = form.sku.trim();
     if (!sku) {
       setMessage("SKU is required — used to match photos during mass upload.");
@@ -214,13 +355,19 @@ export default function AdminPage() {
       setMessage(data.error || "Failed to create product");
       return;
     }
+    revokePreview("create");
     setForm(emptyForm);
+    setPhotoFileName((prev) => ({ ...prev, create: "" }));
+    setPhotoError((prev) => ({ ...prev, create: "" }));
     setMessage("Product added.");
     await loadProducts();
   }
 
   function startEdit(product: Product) {
+    revokePreview("edit");
     setEditingId(product.id);
+    setPhotoError((prev) => ({ ...prev, edit: "" }));
+    setPhotoFileName((prev) => ({ ...prev, edit: "" }));
     setEditForm({
       name: product.name,
       description: product.description,
@@ -237,6 +384,14 @@ export default function AdminPage() {
     e.preventDefault();
     if (!editingId) return;
     setMessage("");
+    if (uploading === "edit") {
+      setMessage("Wait for the photo upload to finish.");
+      return;
+    }
+    if (editForm.imageUrl.startsWith("blob:")) {
+      setMessage("Photo upload did not finish. Fix the photo error and try again.");
+      return;
+    }
     const res = await fetch(`/api/products/${editingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -251,7 +406,10 @@ export default function AdminPage() {
       setMessage(data.error || "Failed to update product");
       return;
     }
+    revokePreview("edit");
     setEditingId(null);
+    setPhotoFileName((prev) => ({ ...prev, edit: "" }));
+    setPhotoError((prev) => ({ ...prev, edit: "" }));
     setMessage("Product updated.");
     await loadProducts();
   }
@@ -265,6 +423,9 @@ export default function AdminPage() {
   if (!ready) {
     return <div className="px-4 py-16 text-center text-sm text-stone-500">Loading…</div>;
   }
+
+  const createBusy = uploading === "create";
+  const editBusy = uploading === "edit";
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -395,26 +556,34 @@ export default function AdminPage() {
               ))}
             </select>
           </label>
-          <label className="block text-sm sm:col-span-2">
-            Photo
-            <input
-              type="file"
-              accept={PHOTO_ACCEPT}
-              disabled={uploading}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleUpload(file, "create");
-                e.target.value = "";
-              }}
-              className="mt-1 block w-full text-sm"
+          <div className="block text-sm sm:col-span-2">
+            <label className="block">
+              Photo
+              <input
+                type="file"
+                accept={PHOTO_ACCEPT}
+                disabled={createBusy}
+                onChange={(e) => onPhotoSelected("create", e.target)}
+                className="mt-1 block w-full text-sm"
+              />
+            </label>
+            <PhotoFieldStatus
+              uploading={createBusy}
+              error={photoError.create}
+              fileName={photoFileName.create}
             />
-          </label>
+          </div>
         </div>
         <div className="flex flex-wrap items-start gap-3">
           <AdminImagePreview src={form.imageUrl} alt="Preview" />
           <button
             type="button"
-            disabled={!form.imageUrl || describing === "create" || uploading}
+            disabled={
+              !form.imageUrl ||
+              form.imageUrl.startsWith("blob:") ||
+              describing === "create" ||
+              createBusy
+            }
             onClick={() => handleGenerateDescription("create")}
             className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -423,7 +592,8 @@ export default function AdminPage() {
         </div>
         <button
           type="submit"
-          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
+          disabled={createBusy}
+          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50"
         >
           Add product
         </button>
@@ -503,25 +673,33 @@ export default function AdminPage() {
                     ))}
                   </select>
                 </div>
-                <label className="block text-sm">
-                  Photo
-                  <input
-                    type="file"
-                    accept={PHOTO_ACCEPT}
-                    disabled={uploading}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleUpload(file, "edit");
-                      e.target.value = "";
-                    }}
-                    className="mt-1 block w-full text-sm"
+                <div className="block text-sm">
+                  <label className="block">
+                    Photo
+                    <input
+                      type="file"
+                      accept={PHOTO_ACCEPT}
+                      disabled={editBusy}
+                      onChange={(e) => onPhotoSelected("edit", e.target)}
+                      className="mt-1 block w-full text-sm"
+                    />
+                  </label>
+                  <PhotoFieldStatus
+                    uploading={editBusy}
+                    error={photoError.edit}
+                    fileName={photoFileName.edit}
                   />
-                </label>
+                </div>
                 <div className="flex flex-wrap items-start gap-3">
                   <AdminImagePreview src={editForm.imageUrl} alt="Preview" />
                   <button
                     type="button"
-                    disabled={!editForm.imageUrl || describing === "edit" || uploading}
+                    disabled={
+                      !editForm.imageUrl ||
+                      editForm.imageUrl.startsWith("blob:") ||
+                      describing === "edit" ||
+                      editBusy
+                    }
                     onClick={() => handleGenerateDescription("edit")}
                     className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -531,14 +709,19 @@ export default function AdminPage() {
                 <div className="flex gap-2">
                   <button
                     type="submit"
-                    disabled={uploading}
+                    disabled={editBusy}
                     className="rounded-lg bg-stone-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
                   >
                     Save
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEditingId(null)}
+                    onClick={() => {
+                      revokePreview("edit");
+                      setEditingId(null);
+                      setPhotoError((prev) => ({ ...prev, edit: "" }));
+                      setPhotoFileName((prev) => ({ ...prev, edit: "" }));
+                    }}
                     className="text-sm underline"
                   >
                     Cancel

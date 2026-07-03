@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { buildProductMatchIndex, matchProductForFilename } from "@/lib/photo-match";
 import { getProducts, updateProduct } from "@/lib/products";
-import { isImageFile, saveUploadedImage } from "@/lib/uploads";
+import { isImageUpload, readUploadEntry, saveUploadedImage } from "@/lib/uploads";
 
+export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
@@ -12,7 +13,10 @@ export async function POST(request: Request) {
 
   try {
     const formData = await request.formData();
-    const files = formData.getAll("files").filter((f): f is File => f instanceof File);
+    const entries = formData.getAll("files");
+    const files = (
+      await Promise.all(entries.map((entry) => readUploadEntry(entry)))
+    ).filter((f): f is NonNullable<typeof f> => f != null);
 
     if (files.length === 0) {
       return NextResponse.json({ error: "Select one or more image files" }, { status: 400 });
@@ -26,14 +30,15 @@ export async function POST(request: Request) {
     const errors: string[] = [];
 
     for (const file of files) {
-      if (!isImageFile(file)) {
-        errors.push(`${file.name}: not an image`);
+      const fileName = file.name || "upload.jpg";
+      if (!isImageUpload(file)) {
+        errors.push(`${fileName}: not an image`);
         continue;
       }
 
-      const match = matchProductForFilename(file.name, index);
+      const match = matchProductForFilename(fileName, index);
       if (!match) {
-        unmatched.push(file.name);
+        unmatched.push(fileName);
         continue;
       }
 
@@ -41,7 +46,7 @@ export async function POST(request: Request) {
         const url = await saveUploadedImage(file);
         await updateProduct(match.product.id, { imageUrl: url });
         matched.push({
-          file: file.name,
+          file: fileName,
           product: match.product.name,
           matchedBy: match.matchedBy,
           url,
@@ -49,7 +54,7 @@ export async function POST(request: Request) {
         match.product.imageUrl = url;
       } catch (err) {
         errors.push(
-          `${file.name}: ${err instanceof Error ? err.message : "upload failed"}`
+          `${fileName}: ${err instanceof Error ? err.message : "upload failed"}`
         );
       }
     }

@@ -10,8 +10,14 @@ const HEIC_BRANDS = new Set(["heic", "heif", "mif1", "msf1", "heix"]);
 const HEIC_SERVER_ERROR =
   "Could not convert HEIC photo. Try exporting as JPG.";
 
-function safeImageExt(file: File): string {
-  const ext = path.extname(file.name).toLowerCase() || ".jpg";
+export type UploadBytes = {
+  buffer: Buffer;
+  name: string;
+  type: string;
+};
+
+function safeImageExt(name: string): string {
+  const ext = path.extname(name).toLowerCase() || ".jpg";
   if (ext === ".heic" || ext === ".heif") return ".jpg";
   return IMAGE_EXT.has(ext) ? ext : ".jpg";
 }
@@ -20,10 +26,10 @@ function blobStorageConfigured(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 }
 
-function isHeicFileNameOrType(file: File): boolean {
-  const type = (file.type || "").toLowerCase();
-  if (HEIC_MIME.has(type)) return true;
-  const ext = path.extname(file.name).toLowerCase();
+function isHeicNameOrType(name: string, type: string): boolean {
+  const mime = (type || "").toLowerCase();
+  if (HEIC_MIME.has(mime)) return true;
+  const ext = path.extname(name).toLowerCase();
   return ext === ".heic" || ext === ".heif";
 }
 
@@ -35,23 +41,58 @@ function isHeicBuffer(buffer: Buffer): boolean {
   return HEIC_BRANDS.has(brand);
 }
 
-export async function saveUploadedImage(file: File): Promise<string> {
-  const bytes = await file.arrayBuffer();
-  const buffer = Buffer.from(bytes);
+function contentTypeFor(name: string, type: string, safeExt: string): string {
+  const mime = (type || "").toLowerCase();
+  if (mime && !HEIC_MIME.has(mime) && mime !== "application/octet-stream") {
+    return type;
+  }
+  const ext = safeExt.replace(/^\./, "");
+  return `image/${ext === "jpg" ? "jpeg" : ext}`;
+}
 
-  if (isHeicFileNameOrType(file) || isHeicBuffer(buffer)) {
+/**
+ * Read a multipart FormData entry without relying on `instanceof File` /
+ * `instanceof Blob` (those fail in some Node/undici runtimes and drop uploads).
+ */
+export async function readUploadEntry(
+  value: FormDataEntryValue | null,
+  fallbackName = "upload.jpg"
+): Promise<UploadBytes | null> {
+  if (value == null || typeof value === "string") return null;
+
+  const candidate = value as { arrayBuffer?: unknown; name?: unknown; type?: unknown; size?: unknown };
+  if (typeof candidate.arrayBuffer !== "function") return null;
+
+  const buffer = Buffer.from(await (candidate.arrayBuffer as () => Promise<ArrayBuffer>)());
+  if (buffer.length === 0) return null;
+
+  const name =
+    typeof candidate.name === "string" && candidate.name.trim()
+      ? candidate.name.trim()
+      : fallbackName;
+  const type = typeof candidate.type === "string" ? candidate.type : "";
+
+  return { buffer, name, type };
+}
+
+export function isImageUpload(upload: UploadBytes): boolean {
+  const type = (upload.type || "").toLowerCase();
+  if (type.startsWith("image/") || HEIC_MIME.has(type)) return true;
+  const ext = path.extname(upload.name).toLowerCase();
+  return IMAGE_EXT.has(ext);
+}
+
+export async function saveUploadedImage(upload: UploadBytes): Promise<string> {
+  if (isHeicNameOrType(upload.name, upload.type) || isHeicBuffer(upload.buffer)) {
     throw new Error(HEIC_SERVER_ERROR);
   }
 
-  const safeExt = safeImageExt(file);
+  const safeExt = safeImageExt(upload.name);
   const filename = `${randomUUID()}${safeExt}`;
-  const contentType =
-    file.type && !HEIC_MIME.has(file.type.toLowerCase())
-      ? file.type
-      : `image/${safeExt.replace(/^\./, "") === "jpg" ? "jpeg" : safeExt.replace(/^\./, "")}`;
+  const contentType = contentTypeFor(upload.name, upload.type, safeExt);
 
   if (blobStorageConfigured()) {
-    const blob = await put(`uploads/${filename}`, buffer, {
+    const blob = await put(`uploads/${filename}`, upload.buffer, {
       access: "public",
       contentType,
     });
@@ -66,13 +107,6 @@ export async function saveUploadedImage(file: File): Promise<string> {
 
   const uploadDir = path.join(process.cwd(), "public", "uploads");
   await fs.mkdir(uploadDir, { recursive: true });
-  await fs.writeFile(path.join(uploadDir, filename), buffer);
+  await fs.writeFile(path.join(uploadDir, filename), upload.buffer);
   return `/uploads/${filename}`;
-}
-
-export function isImageFile(file: File): boolean {
-  const type = (file.type || "").toLowerCase();
-  if (type.startsWith("image/") || HEIC_MIME.has(type)) return true;
-  const ext = path.extname(file.name).toLowerCase();
-  return IMAGE_EXT.has(ext);
 }
