@@ -73,11 +73,13 @@ function parsePrice(raw: string, fallback = ""): number {
 }
 
 function parseStock(...values: string[]): number {
+  let best = -1;
   for (const v of values) {
+    if (!v.trim()) continue;
     const n = Number(v.replace(/,/g, "").trim());
-    if (Number.isFinite(n) && n >= 0) return Math.floor(n);
+    if (Number.isFinite(n) && n >= 0) best = Math.max(best, Math.floor(n));
   }
-  return 1;
+  return best >= 0 ? best : 1;
 }
 
 function isArchived(row: Record<string, string>): boolean {
