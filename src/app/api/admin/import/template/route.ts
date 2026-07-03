@@ -1,7 +1,11 @@
 import * as XLSX from "xlsx";
+import { requireAdmin } from "@/lib/admin-auth";
 import { IMPORT_TEMPLATE_CSV } from "@/lib/spreadsheet";
 
 export async function GET(request: Request) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const { searchParams } = new URL(request.url);
   const format = searchParams.get("format") || "xlsx";
 

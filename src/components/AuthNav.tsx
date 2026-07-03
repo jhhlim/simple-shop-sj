@@ -13,6 +13,11 @@ export function AuthNav() {
   if (session?.user) {
     return (
       <div className="flex items-center gap-3">
+        {session.user.isAdmin && (
+          <Link href="/admin" className="text-stone-600 hover:text-stone-900">
+            Manage shop
+          </Link>
+        )}
         <Link href="/account" className="text-stone-600 hover:text-stone-900">
           {session.user.name || "Account"}
         </Link>

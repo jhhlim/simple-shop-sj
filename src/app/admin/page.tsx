@@ -173,24 +173,36 @@ export default function AdminPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Manage listings</h1>
+          <h1 className="text-2xl font-semibold">Listings</h1>
           <p className="mt-1 text-sm text-stone-600">
-            <Link href="/admin/orders" className="font-medium underline">
-              Fulfill orders →
-            </Link>
-            {" · "}
+            Add items one at a time, or use{" "}
             <Link href="/admin/import" className="font-medium underline">
-              Bulk import CSV &amp; photos →
-            </Link>
+              Import &amp; Export
+            </Link>{" "}
+            for bulk updates.
           </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href="/api/admin/products/export?format=csv"
+            className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50"
+          >
+            Export CSV
+          </a>
+          <a
+            href="/api/admin/products/export?format=xlsx"
+            className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50"
+          >
+            Export Excel
+          </a>
         </div>
       </div>
 
       <form onSubmit={handleCreate} className="mt-6 space-y-4 rounded-xl border border-stone-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-medium">New product</h2>
+          <h2 className="font-medium">Add new item</h2>
           <Link
             href="/admin/import"
             className="text-sm font-medium text-stone-600 underline hover:text-stone-900"
@@ -285,6 +297,7 @@ export default function AdminPage() {
 
       <div className="mt-8 space-y-3">
         <h2 className="font-medium">Current listings ({products.length})</h2>
+        <p className="text-sm text-stone-500">Click Edit to update price, stock, photos, or description.</p>
         {products.map((p) => (
           <div key={p.id} className="rounded-xl border border-stone-200 bg-white p-4">
             {editingId === p.id ? (

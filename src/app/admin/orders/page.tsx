@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAdminGate } from "@/components/AdminAuth";
 import type { Order } from "@/lib/types";
@@ -109,9 +108,6 @@ export default function AdminOrdersPage() {
             Create USPS labels with Shippo, email tracking automatically.
           </p>
         </div>
-        <Link href="/admin" className="text-sm underline">
-          Products
-        </Link>
       </div>
 
       {message && (

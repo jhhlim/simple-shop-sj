@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useAdminGate } from "@/components/AdminAuth";
 
@@ -75,7 +74,7 @@ export default function AdminImportPage() {
     setPreview(data);
     const label =
       data.format === "simple"
-        ? "Excel template"
+        ? "Template format"
         : data.format === "square"
           ? "Square export"
           : data.format === "ebay"
@@ -126,22 +125,49 @@ export default function AdminImportPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Import from Excel</h1>
-          <p className="mt-1 text-sm text-stone-600">
-            Same fields as &ldquo;New product&rdquo; on the listings page.
-          </p>
-        </div>
-        <div className="flex gap-3 text-sm">
-          <Link href="/admin" className="underline">
-            Listings
-          </Link>
-        </div>
+      <div>
+        <h1 className="text-2xl font-semibold">Import &amp; Export</h1>
+        <p className="mt-1 text-sm text-stone-600">
+          Square-style workflow: download a template or export your catalog, edit in Excel, then
+          re-import. Same columns either way.
+        </p>
       </div>
 
+      <section className="mt-6 rounded-xl border border-stone-200 bg-white p-5">
+        <h2 className="font-medium">1. Download template or export catalog</h2>
+        <p className="mt-1 text-sm text-stone-600">
+          Use the blank template for new items, or export your current listings to edit in bulk.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a
+            href="/api/admin/import/template?format=xlsx"
+            className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
+          >
+            Blank Excel template
+          </a>
+          <a
+            href="/api/admin/import/template?format=csv"
+            className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm hover:bg-stone-50"
+          >
+            Blank CSV template
+          </a>
+          <a
+            href="/api/admin/products/export?format=xlsx"
+            className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm hover:bg-stone-50"
+          >
+            Export all listings (Excel)
+          </a>
+          <a
+            href="/api/admin/products/export?format=csv"
+            className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm hover:bg-stone-50"
+          >
+            Export all listings (CSV)
+          </a>
+        </div>
+      </section>
+
       <section className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-950">
-        <p className="font-medium">Excel columns (row 1 = headers)</p>
+        <h2 className="font-medium text-blue-950">Column reference</h2>
         <table className="mt-3 w-full text-left text-xs">
           <thead>
             <tr className="border-b border-blue-200 text-blue-800">
@@ -162,27 +188,12 @@ export default function AdminImportPage() {
           <strong>Category</strong> must be one of:{" "}
           <span className="rounded bg-white/70 px-1.5 py-0.5">Used goods</span>,{" "}
           <span className="rounded bg-white/70 px-1.5 py-0.5">Jewelry</span>, or{" "}
-          <span className="rounded bg-white/70 px-1.5 py-0.5">Other</span> — same as the
-          dropdown on Manage listings.
+          <span className="rounded bg-white/70 px-1.5 py-0.5">Other</span>.
         </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <a
-            href="/api/admin/import/template?format=xlsx"
-            className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
-          >
-            Download Excel template
-          </a>
-          <a
-            href="/api/admin/import/template?format=csv"
-            className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm hover:bg-stone-50"
-          >
-            Download CSV template
-          </a>
-        </div>
       </section>
 
-      <section className="mt-8 space-y-4 rounded-xl border border-stone-200 bg-white p-5">
-        <h2 className="font-medium">Upload spreadsheet</h2>
+      <section className="mt-6 space-y-4 rounded-xl border border-stone-200 bg-white p-5">
+        <h2 className="font-medium">2. Import spreadsheet</h2>
         <input
           type="file"
           accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -194,7 +205,7 @@ export default function AdminImportPage() {
           className="block w-full text-sm"
         />
         <p className="text-xs text-stone-500">
-          .xlsx, .xls, or .csv. Square / eBay exports still work automatically.
+          .xlsx, .xls, or .csv. Square and eBay exports are also detected automatically.
         </p>
         <div className="flex flex-wrap items-center gap-4">
           <button
@@ -211,7 +222,7 @@ export default function AdminImportPage() {
               checked={updateExisting}
               onChange={(e) => setUpdateExisting(e.target.checked)}
             />
-            Update existing (match by SKU)
+            Update existing items (match by SKU)
           </label>
           <button
             type="button"
@@ -258,8 +269,8 @@ export default function AdminImportPage() {
         )}
       </section>
 
-      <section className="mt-8 space-y-4 rounded-xl border border-stone-200 bg-white p-5">
-        <h2 className="font-medium">Bulk photos (optional)</h2>
+      <section className="mt-6 space-y-4 rounded-xl border border-stone-200 bg-white p-5">
+        <h2 className="font-medium">3. Bulk photos (optional)</h2>
         <p className="text-sm text-stone-600">
           If you didn&apos;t use Image URL in the spreadsheet, upload photos named by{" "}
           <strong>SKU</strong> (e.g. <code className="rounded bg-stone-100 px-1">RING001.jpg</code>
