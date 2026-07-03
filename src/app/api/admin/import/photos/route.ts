@@ -4,6 +4,8 @@ import { buildProductMatchIndex, matchProductForFilename } from "@/lib/photo-mat
 import { getProducts, updateProduct } from "@/lib/products";
 import { isImageFile, saveUploadedImage } from "@/lib/uploads";
 
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const denied = await requireAdmin();
   if (denied) return denied;

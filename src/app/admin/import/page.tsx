@@ -46,6 +46,76 @@ const COLUMNS = [
   { col: "Image URL", note: "optional" },
 ];
 
+const PHOTO_FETCH_TIMEOUT_MS = 90_000;
+
+function emptyPhotoResult(): PhotoResult {
+  return {
+    total: 0,
+    matched: 0,
+    unmatched: 0,
+    results: [],
+    unmatchedFiles: [],
+    errors: [],
+  };
+}
+
+function chunkPhotoFiles(files: File[]): File[][] {
+  const maxBytes = 2.5 * 1024 * 1024;
+  const maxCount = 3;
+  const chunks: File[][] = [];
+  let current: File[] = [];
+  let size = 0;
+
+  for (const file of files) {
+    if (current.length > 0 && (current.length >= maxCount || size + file.size > maxBytes)) {
+      chunks.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(file);
+    size += file.size;
+  }
+  if (current.length) chunks.push(current);
+  return chunks;
+}
+
+async function uploadPhotoBatch(batch: File[]): Promise<PhotoResult & { error?: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PHOTO_FETCH_TIMEOUT_MS);
+  try {
+    const body = new FormData();
+    batch.forEach((f) => body.append("files", f));
+    const res = await fetch("/api/admin/import/photos", {
+      method: "POST",
+      body,
+      signal: controller.signal,
+    });
+    const data = (await res.json()) as PhotoResult & { error?: string };
+    if (!res.ok) {
+      return { ...emptyPhotoResult(), error: data.error || `Upload failed (${res.status})` };
+    }
+    return data;
+  } catch (err) {
+    const msg =
+      err instanceof Error && err.name === "AbortError"
+        ? "Timed out"
+        : err instanceof Error
+          ? err.message
+          : "Upload failed";
+    return { ...emptyPhotoResult(), error: msg };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function mergePhotoResults(target: PhotoResult, source: PhotoResult) {
+  target.matched += source.matched;
+  target.unmatched += source.unmatched;
+  target.results.push(...source.results);
+  target.unmatchedFiles.push(...source.unmatchedFiles);
+  target.errors.push(...source.errors);
+}
+
 export default function AdminImportPage() {
   const { ready } = useAdminGate();
   const [file, setFile] = useState<File | null>(null);
@@ -111,7 +181,7 @@ export default function AdminImportPage() {
     setPhotoResult(null);
     setPhotoProgress("");
 
-    const batchSize = 20;
+    const chunks = chunkPhotoFiles(list);
     const combined: PhotoResult = {
       total: list.length,
       matched: 0,
@@ -121,26 +191,31 @@ export default function AdminImportPage() {
       errors: [],
     };
 
-    for (let i = 0; i < list.length; i += batchSize) {
-      const batch = list.slice(i, i + batchSize);
+    let done = 0;
+    for (let batchIndex = 0; batchIndex < chunks.length; batchIndex++) {
+      const batch = chunks[batchIndex]!;
       setPhotoProgress(
-        `Uploading ${Math.min(i + batch.length, list.length)} of ${list.length}…`
+        `Uploading batch ${batchIndex + 1} of ${chunks.length} (${done + 1}–${done + batch.length} of ${list.length})…`
       );
-      const body = new FormData();
-      batch.forEach((f) => body.append("files", f));
-      const res = await fetch("/api/admin/import/photos", { method: "POST", body });
-      const data = (await res.json()) as PhotoResult & { error?: string };
-      if (!res.ok) {
-        setLoading(null);
-        setPhotoProgress("");
-        setMessage(data.error || "Photo import failed");
-        return;
+
+      const data = await uploadPhotoBatch(batch);
+      done += batch.length;
+
+      if (!data.error) {
+        mergePhotoResults(combined, data);
+        continue;
       }
-      combined.matched += data.matched;
-      combined.unmatched += data.unmatched;
-      combined.results.push(...(data.results || []));
-      combined.unmatchedFiles.push(...(data.unmatchedFiles || []));
-      combined.errors.push(...(data.errors || []));
+
+      for (let i = 0; i < batch.length; i++) {
+        const file = batch[i]!;
+        setPhotoProgress(`Retrying ${file.name} (${done - batch.length + i + 1} of ${list.length})…`);
+        const single = await uploadPhotoBatch([file]);
+        if (single.error) {
+          combined.errors.push(`${file.name}: ${single.error}`);
+          continue;
+        }
+        mergePhotoResults(combined, single);
+      }
     }
 
     setLoading(null);
@@ -324,7 +399,10 @@ export default function AdminImportPage() {
           className="block w-full text-sm"
         />
         {photoFiles.length > 0 && (
-          <p className="text-sm text-stone-600">{photoFiles.length} file(s) selected</p>
+          <p className="text-sm text-stone-600">
+            {photoFiles.length} file(s) selected — uploads run in small batches (~3 photos at a
+            time). Large sets may take several minutes.
+          </p>
         )}
         <button
           type="button"
