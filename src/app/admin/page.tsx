@@ -319,14 +319,60 @@ export default function AdminPage() {
     void handleUpload(file, target);
   }
 
+  /**
+   * Vision models need a public https URL or a data:image payload.
+   * Browser blob: previews are converted to base64 so AI works before/without
+   * a finished upload (OpenAI cannot fetch blob: URLs).
+   */
+  async function resolveImageForDescribe(imageUrl: string): Promise<string> {
+    const value = imageUrl.trim();
+    if (!value) {
+      throw new Error("Add a photo first, then generate a description.");
+    }
+    if (value.startsWith("https://") || value.startsWith("http://")) {
+      return value;
+    }
+    if (value.startsWith("data:image/")) {
+      return value;
+    }
+    if (value.startsWith("blob:") || value.startsWith("/uploads/")) {
+      const res = await fetch(value);
+      if (!res.ok) {
+        throw new Error("Could not read the photo for AI description.");
+      }
+      const blob = await res.blob();
+      if (blob.size === 0) {
+        throw new Error("Could not read the photo for AI description.");
+      }
+      // Ensure a data:image/... payload even when the blob MIME is missing.
+      const imageBlob =
+        blob.type.startsWith("image/")
+          ? blob
+          : new Blob([blob], { type: "image/jpeg" });
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = typeof reader.result === "string" ? reader.result : "";
+          if (!result.startsWith("data:image/")) {
+            reject(new Error("Could not encode the photo for AI description."));
+            return;
+          }
+          resolve(result);
+        };
+        reader.onerror = () =>
+          reject(new Error("Could not read the photo for AI description."));
+        reader.readAsDataURL(imageBlob);
+      });
+    }
+    throw new Error("Add a photo first, then generate a description.");
+  }
+
   async function handleGenerateDescription(target: "create" | "edit") {
     const imageUrl = target === "create" ? form.imageUrl : editForm.imageUrl;
-    if (!imageUrl.trim() || imageUrl.startsWith("blob:")) {
-      setMessage("Upload a photo first, then generate a description.");
-      setPhotoError((prev) => ({
-        ...prev,
-        [target]: "Wait for the photo upload to finish before generating a description.",
-      }));
+    if (!imageUrl.trim()) {
+      const err = "Add a photo first, then generate a description.";
+      setMessage(err);
+      setPhotoError((prev) => ({ ...prev, [target]: err }));
       return;
     }
 
@@ -341,22 +387,44 @@ export default function AdminPage() {
 
     setDescribing(target);
     setMessage("");
+    setPhotoError((prev) => ({ ...prev, [target]: "" }));
     try {
+      const payloadUrl = await resolveImageForDescribe(imageUrl);
       const res = await fetch("/api/admin/products/describe-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl }),
+        credentials: "same-origin",
+        body: JSON.stringify({ imageUrl: payloadUrl }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to generate description");
+      let data: { description?: string; error?: string } = {};
+      try {
+        data = (await res.json()) as { description?: string; error?: string };
+      } catch {
+        throw new Error(
+          res.ok
+            ? "Invalid server response"
+            : `Failed to generate description (${res.status})`
+        );
+      }
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to generate description");
+      }
+      const description =
+        typeof data.description === "string" ? data.description.trim() : "";
+      if (!description) {
+        throw new Error("No description returned");
+      }
       if (target === "create") {
-        setForm((f) => ({ ...f, description: data.description }));
+        setForm((f) => ({ ...f, description }));
       } else {
-        setEditForm((f) => ({ ...f, description: data.description }));
+        setEditForm((f) => ({ ...f, description }));
       }
       setMessage("Description generated.");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "AI description failed");
+      const errorText =
+        err instanceof Error ? err.message : "AI description failed";
+      setMessage(errorText);
+      setPhotoError((prev) => ({ ...prev, [target]: errorText }));
     } finally {
       setDescribing(null);
     }
@@ -620,12 +688,7 @@ export default function AdminPage() {
           <AdminImagePreview src={form.imageUrl} alt="Preview" />
           <button
             type="button"
-            disabled={
-              !form.imageUrl ||
-              form.imageUrl.startsWith("blob:") ||
-              describing === "create" ||
-              createBusy
-            }
+            disabled={!form.imageUrl.trim() || describing === "create"}
             onClick={() => handleGenerateDescription("create")}
             className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -737,12 +800,7 @@ export default function AdminPage() {
                   <AdminImagePreview src={editForm.imageUrl} alt="Preview" />
                   <button
                     type="button"
-                    disabled={
-                      !editForm.imageUrl ||
-                      editForm.imageUrl.startsWith("blob:") ||
-                      describing === "edit" ||
-                      editBusy
-                    }
+                    disabled={!editForm.imageUrl.trim() || describing === "edit"}
                     onClick={() => handleGenerateDescription("edit")}
                     className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -803,7 +861,17 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {message && <p className="mt-4 text-sm text-stone-600">{message}</p>}
+      {message && (
+        <p
+          className={`mt-4 text-sm font-medium ${
+            /fail|error|add openai|required|could not|forbidden|sign in/i.test(message)
+              ? "text-red-600"
+              : "text-stone-600"
+          }`}
+        >
+          {message}
+        </p>
+      )}
     </div>
   );
 }

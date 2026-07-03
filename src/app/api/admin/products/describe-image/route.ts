@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 
-const PROMPT = `Write a concise marketplace listing description for this resale item.
-Focus on clothing, shoes, bags, jewelry, toys, or collectibles as applicable.
-Note only what is clearly visible: brand, color, material cues, style, and condition cues.
-Do not invent facts, sizes, authenticity claims, or details you cannot see.
-Keep it to 2–4 short sentences suitable for a product listing. No markdown or bullet points.`;
+const PROMPT =
+  "Write a concise marketplace listing description (2-4 sentences) for this resale item. Mention visible brand, color, type, material if clear. Do not invent facts not visible. Tone: clean, trustworthy, suitable for LIMWARE.";
+
+const MISSING_KEY_ERROR =
+  "Add OPENAI_API_KEY in Vercel env vars to enable AI descriptions";
 
 function getVisionConfig():
   | { apiUrl: string; apiKey: string; model: string }
   | { error: string } {
-  const gatewayKey = process.env.AI_GATEWAY_API_KEY?.trim();
+  // Prefer Vercel AI Gateway when configured.
+  const gatewayKey =
+    process.env.AI_GATEWAY_API_KEY?.trim() ||
+    process.env.VERCEL_AI_GATEWAY_API_KEY?.trim();
   if (gatewayKey) {
     return {
       apiUrl: "https://ai-gateway.vercel.sh/v1/chat/completions",
@@ -28,9 +31,13 @@ function getVisionConfig():
     };
   }
 
-  return {
-    error: "Add OPENAI_API_KEY or AI_GATEWAY_API_KEY to enable AI descriptions",
-  };
+  return { error: MISSING_KEY_ERROR };
+}
+
+function isUsableImagePayload(imageUrl: string): boolean {
+  if (imageUrl.startsWith("data:image/")) return true;
+  if (imageUrl.startsWith("https://") || imageUrl.startsWith("http://")) return true;
+  return false;
 }
 
 export async function POST(request: Request) {
@@ -52,6 +59,25 @@ export async function POST(request: Request) {
 
   if (!imageUrl) {
     return NextResponse.json({ error: "imageUrl is required" }, { status: 400 });
+  }
+
+  // Browser blob: URLs are not reachable by the vision model — client must send
+  // a public https URL or a data:image/... base64 payload.
+  if (imageUrl.startsWith("blob:")) {
+    return NextResponse.json(
+      {
+        error:
+          "Photo is still a local preview. Wait for upload to finish, or try again.",
+      },
+      { status: 400 }
+    );
+  }
+
+  if (!isUsableImagePayload(imageUrl)) {
+    return NextResponse.json(
+      { error: "A public photo URL or image data is required" },
+      { status: 400 }
+    );
   }
 
   try {
@@ -83,10 +109,12 @@ export async function POST(request: Request) {
     };
 
     if (!res.ok) {
-      return NextResponse.json(
-        { error: data.error?.message || "Vision model request failed" },
-        { status: 502 }
-      );
+      const providerMessage = data.error?.message || "Vision model request failed";
+      // Surface missing/invalid key clearly when the provider rejects auth.
+      if (res.status === 401 || /api key|unauthorized|authentication/i.test(providerMessage)) {
+        return NextResponse.json({ error: MISSING_KEY_ERROR }, { status: 503 });
+      }
+      return NextResponse.json({ error: providerMessage }, { status: 502 });
     }
 
     const description = data.choices?.[0]?.message?.content?.trim();
