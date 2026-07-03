@@ -39,19 +39,24 @@ function LoginForm() {
     setError("");
     setLoading(true);
 
-    const res = await signIn("credentials", {
-      login,
-      password,
-      redirect: false,
-    });
+    try {
+      const res = await signIn("credentials", {
+        login,
+        password,
+        redirect: false,
+      });
 
-    setLoading(false);
-    if (res?.error) {
-      setError("Invalid username/email or password");
-      return;
+      if (res?.error) {
+        setError("Invalid username/email or password");
+        return;
+      }
+      const callbackUrl = searchParams.get("callbackUrl") || "/";
+      window.location.href = callbackUrl;
+    } catch {
+      setError("Sign in failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    const callbackUrl = searchParams.get("callbackUrl") || "/";
-    window.location.href = callbackUrl;
   }
 
   return (

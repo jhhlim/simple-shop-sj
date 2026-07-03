@@ -2,9 +2,10 @@ import NextAuth from "next-auth";
 import type { Provider } from "next-auth/providers";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
-import { isAdminUsername } from "@/lib/admin-auth";
+import { isAdminUsername } from "@/lib/admin-identity";
 import {
   createOrLinkGoogleUser,
+  ensureAdminUser,
   findUserByUsernameOrEmail,
   verifyPassword,
 } from "@/lib/users";
@@ -20,6 +21,10 @@ const providers: Provider[] = [
       const login = credentials?.login as string | undefined;
       const password = credentials?.password as string | undefined;
       if (!login?.trim() || !password) return null;
+
+      if (isAdminUsername(login)) {
+        await ensureAdminUser();
+      }
 
       const user = await findUserByUsernameOrEmail(login);
       if (!user || !(await verifyPassword(user, password))) return null;

@@ -1,17 +1,7 @@
 import { auth } from "@/auth";
+import { isAdminUsername } from "@/lib/admin-identity";
 
-export function getAdminUsername(): string {
-  return (process.env.ADMIN_USERNAME || "admin").trim().toLowerCase();
-}
-
-export function getAdminPassword(): string {
-  return process.env.ADMIN_PASSWORD || "change-me";
-}
-
-export function isAdminUsername(username: string | null | undefined): boolean {
-  if (!username) return false;
-  return username.trim().toLowerCase() === getAdminUsername();
-}
+export { getAdminPassword, getAdminUsername, isAdminUsername } from "@/lib/admin-identity";
 
 export async function requireAdmin(): Promise<Response | null> {
   const session = await auth();

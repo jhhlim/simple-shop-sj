@@ -296,8 +296,6 @@ export async function ensureAdminUser(): Promise<void> {
   const password = process.env.ADMIN_PASSWORD || "change-me";
   const email = (process.env.ADMIN_EMAIL || `${username}@limware.local`).trim().toLowerCase();
 
-  if (await findUserByUsername(username)) return;
-
   const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
   const user: DbUser = {
     id: randomUUID(),
@@ -310,8 +308,55 @@ export async function ensureAdminUser(): Promise<void> {
     created_at: new Date().toISOString(),
   };
 
+  if (isPostgresEnabled()) {
+    const sql = getSql();
+    const rows = asRows<Record<string, unknown>>(
+      await sql`SELECT id FROM users WHERE lower(username) = ${username} LIMIT 1`
+    );
+    if (rows[0]) return;
+
+    try {
+      await sql`
+        INSERT INTO users (
+          id, username, email, password_hash, name, google_id, email_verified, created_at
+        )
+        VALUES (
+          ${user.id},
+          ${user.username},
+          ${user.email},
+          ${user.password_hash},
+          ${user.name},
+          ${user.google_id},
+          ${user.email_verified},
+          ${user.created_at}
+        )
+      `;
+    } catch (err) {
+      if (!isDuplicateUserError(err)) throw err;
+    }
+    return;
+  }
+
+  const existing = getDb()
+    .prepare("SELECT id FROM users WHERE lower(username) = ?")
+    .get(username);
+  if (existing) return;
+
   try {
-    await insertUser(user);
+    assertCanPersistData();
+    getDb()
+      .prepare(
+        `INSERT INTO users (
+          id, username, email, password_hash, name, google_id, email_verified, created_at
+        )
+         VALUES (
+          @id, @username, @email, @password_hash, @name, @google_id, @email_verified, @created_at
+        )`
+      )
+      .run({
+        ...user,
+        email_verified: user.email_verified ? 1 : 0,
+      });
   } catch (err) {
     if (!isDuplicateUserError(err)) throw err;
   }
