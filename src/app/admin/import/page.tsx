@@ -424,10 +424,20 @@ export default function AdminImportPage() {
           </p>
         )}
         {photoResult && photoResult.errors.length > 0 && (
-          <p className="text-sm text-red-700">
-            {photoResult.errors.length} upload error(s). Try fewer files per batch or use Image URL
-            in your spreadsheet.
-          </p>
+          <div className="text-sm text-red-700">
+            <p>
+              {photoResult.errors.length} upload error(s). Try fewer files per batch or use Image URL
+              in your spreadsheet.
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+              {photoResult.errors.slice(0, 10).map((err) => (
+                <li key={err}>{err}</li>
+              ))}
+              {photoResult.errors.length > 10 && (
+                <li>…and {photoResult.errors.length - 10} more</li>
+              )}
+            </ul>
+          </div>
         )}
       </section>
 
