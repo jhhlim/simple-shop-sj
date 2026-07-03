@@ -283,7 +283,36 @@ export async function validateRegistration(input: {
   if (password.length < 8) {
     return "Password must be at least 8 characters";
   }
+  if (username === (process.env.ADMIN_USERNAME || "admin").trim().toLowerCase()) {
+    return "This username is reserved";
+  }
   if (await findUserByUsername(username)) return "Username is already taken";
   if (await findUserByEmail(email)) return "Email is already registered";
   return null;
+}
+
+export async function ensureAdminUser(): Promise<void> {
+  const username = (process.env.ADMIN_USERNAME || "admin").trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD || "change-me";
+  const email = (process.env.ADMIN_EMAIL || `${username}@limware.local`).trim().toLowerCase();
+
+  if (await findUserByUsername(username)) return;
+
+  const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
+  const user: DbUser = {
+    id: randomUUID(),
+    username,
+    email,
+    password_hash,
+    name: username,
+    google_id: null,
+    email_verified: true,
+    created_at: new Date().toISOString(),
+  };
+
+  try {
+    await insertUser(user);
+  } catch (err) {
+    if (!isDuplicateUserError(err)) throw err;
+  }
 }

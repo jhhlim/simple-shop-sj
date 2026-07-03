@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { adminFetch, AdminLoginForm, useAdminAuth } from "@/components/AdminAuth";
+import { useAdminGate } from "@/components/AdminAuth";
 import type { Product } from "@/lib/types";
 
 type CouponRow = { code: string; percentOff: number; active: boolean };
@@ -18,7 +18,7 @@ const emptyForm = {
 };
 
 export default function AdminPage() {
-  const { authenticated, checking, error, login, logout } = useAdminAuth();
+  const { ready } = useAdminGate();
   const [products, setProducts] = useState<Product[]>([]);
   const [coupons, setCoupons] = useState<CouponRow[]>([]);
   const [message, setMessage] = useState("");
@@ -34,18 +34,18 @@ export default function AdminPage() {
   }
 
   async function loadCoupons() {
-    const res = await adminFetch("/api/admin/coupons");
+    const res = await fetch("/api/admin/coupons");
     if (!res.ok) return;
     const data = await res.json();
     setCoupons(data.coupons || []);
   }
 
   useEffect(() => {
-    if (authenticated) {
+    if (ready) {
       loadProducts();
       loadCoupons();
     }
-  }, [authenticated]);
+  }, [ready]);
 
   async function handleUpload(file: File, target: "create" | "edit") {
     setUploading(true);
@@ -53,7 +53,7 @@ export default function AdminPage() {
     try {
       const body = new FormData();
       body.append("file", file);
-      const res = await adminFetch("/api/upload", { method: "POST", body });
+      const res = await fetch("/api/upload", { method: "POST", body });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       if (target === "create") setForm((f) => ({ ...f, imageUrl: data.url }));
@@ -69,7 +69,7 @@ export default function AdminPage() {
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setMessage("");
-    const res = await adminFetch("/api/products", {
+    const res = await fetch("/api/products", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -104,7 +104,7 @@ export default function AdminPage() {
     e.preventDefault();
     if (!editingId) return;
     setMessage("");
-    const res = await adminFetch(`/api/products/${editingId}`, {
+    const res = await fetch(`/api/products/${editingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -125,14 +125,14 @@ export default function AdminPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this product?")) return;
-    await adminFetch(`/api/products/${id}`, { method: "DELETE" });
+    await fetch(`/api/products/${id}`, { method: "DELETE" });
     await loadProducts();
   }
 
   async function handleCreateCoupon(e: FormEvent) {
     e.preventDefault();
     setMessage("");
-    const res = await adminFetch("/api/admin/coupons", {
+    const res = await fetch("/api/admin/coupons", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -151,7 +151,7 @@ export default function AdminPage() {
   }
 
   async function toggleCoupon(code: string, active: boolean) {
-    await adminFetch("/api/admin/coupons", {
+    await fetch("/api/admin/coupons", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, active }),
@@ -161,18 +161,14 @@ export default function AdminPage() {
 
   async function removeCoupon(code: string) {
     if (!confirm(`Delete coupon ${code}?`)) return;
-    await adminFetch(`/api/admin/coupons?code=${encodeURIComponent(code)}`, {
+    await fetch(`/api/admin/coupons?code=${encodeURIComponent(code)}`, {
       method: "DELETE",
     });
     await loadCoupons();
   }
 
-  if (checking) {
+  if (!ready) {
     return <div className="px-4 py-16 text-center text-sm text-stone-500">Loading…</div>;
-  }
-
-  if (!authenticated) {
-    return <AdminLoginForm onLogin={login} error={error} />;
   }
 
   return (
@@ -190,13 +186,6 @@ export default function AdminPage() {
             </Link>
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => logout()}
-          className="text-sm text-stone-500 underline hover:text-stone-800"
-        >
-          Log out
-        </button>
       </div>
 
       <form onSubmit={handleCreate} className="mt-6 space-y-4 rounded-xl border border-stone-200 bg-white p-5">

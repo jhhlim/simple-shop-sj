@@ -1,7 +1,10 @@
 import Database from "better-sqlite3";
 import path from "path";
 
-const globalForDb = globalThis as unknown as { shopDb?: Database.Database };
+const globalForDb = globalThis as unknown as {
+  shopDb?: Database.Database;
+  adminUserEnsured?: boolean;
+};
 
 function initSchema(db: Database.Database) {
   db.exec(`
@@ -58,6 +61,10 @@ export function getDb(): Database.Database {
     globalForDb.shopDb.pragma("journal_mode = WAL");
     globalForDb.shopDb.pragma("foreign_keys = ON");
     initSchema(globalForDb.shopDb);
+    if (!globalForDb.adminUserEnsured) {
+      globalForDb.adminUserEnsured = true;
+      void import("./users").then((m) => m.ensureAdminUser()).catch(() => {});
+    }
   }
   return globalForDb.shopDb;
 }

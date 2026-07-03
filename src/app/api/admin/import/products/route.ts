@@ -5,7 +5,7 @@ import { importCatalogRows } from "@/lib/products";
 import { fileToCsvText } from "@/lib/spreadsheet";
 
 export async function POST(request: Request) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin();
   if (denied) return denied;
 
   const formData = await request.formData();

@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import type { Provider } from "next-auth/providers";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
+import { isAdminUsername } from "@/lib/admin-auth";
 import {
   createOrLinkGoogleUser,
   findUserByUsernameOrEmail,
@@ -78,12 +79,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (user.name) token.name = user.name;
         if (user.email) token.email = user.email;
       }
+      if (token.name) {
+        token.isAdmin = isAdminUsername(token.name as string);
+      }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub;
         if (token.name) session.user.name = token.name as string;
+        session.user.isAdmin = Boolean(token.isAdmin);
       }
       return session;
     },

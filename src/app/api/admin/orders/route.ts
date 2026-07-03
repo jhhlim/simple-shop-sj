@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { getOrders, ordersNeedingShipment } from "@/lib/orders";
 
 export async function GET(request: Request) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin();
   if (denied) return denied;
 
   const orders = await getOrders();

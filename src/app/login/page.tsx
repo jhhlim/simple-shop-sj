@@ -50,7 +50,8 @@ function LoginForm() {
       setError("Invalid username/email or password");
       return;
     }
-    window.location.href = "/";
+    const callbackUrl = searchParams.get("callbackUrl") || "/";
+    window.location.href = callbackUrl;
   }
 
   return (

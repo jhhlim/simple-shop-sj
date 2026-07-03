@@ -149,6 +149,9 @@ async function initSchema() {
   `;
 
   await seedProductsIfEmpty(sql);
+
+  const { ensureAdminUser } = await import("./users");
+  await ensureAdminUser();
 }
 
 async function seedProductsIfEmpty(

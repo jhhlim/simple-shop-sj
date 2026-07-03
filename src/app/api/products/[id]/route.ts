@@ -6,7 +6,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin();
   if (denied) return denied;
 
   const { id } = await params;
@@ -31,7 +31,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin();
   if (denied) return denied;
 
   const { id } = await params;

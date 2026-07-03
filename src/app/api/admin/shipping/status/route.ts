@@ -5,7 +5,7 @@ import { getPublicSiteUrl } from "@/lib/site-url";
 import { shippoConfigured } from "@/lib/shippo";
 
 export async function GET(request: Request) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin();
   if (denied) return denied;
 
   const origin = getPublicSiteUrl();

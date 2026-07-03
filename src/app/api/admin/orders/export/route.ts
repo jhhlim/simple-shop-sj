@@ -4,7 +4,7 @@ import { getOrders, ordersNeedingShipment } from "@/lib/orders";
 import { ordersToPirateShipCsv } from "@/lib/pirateship-export";
 
 export async function GET(request: Request) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin();
   if (denied) return denied;
 
   const { searchParams } = new URL(request.url);

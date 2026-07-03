@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { adminFetch, AdminLoginForm, useAdminAuth } from "@/components/AdminAuth";
+import { useAdminGate } from "@/components/AdminAuth";
 
 type PreviewData = {
   format: string;
@@ -48,7 +48,7 @@ const COLUMNS = [
 ];
 
 export default function AdminImportPage() {
-  const { authenticated, checking, error, login, logout } = useAdminAuth();
+  const { ready } = useAdminGate();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [updateExisting, setUpdateExisting] = useState(true);
@@ -64,7 +64,7 @@ export default function AdminImportPage() {
     setImportResult(null);
     const body = new FormData();
     body.append("file", file);
-    const res = await adminFetch("/api/admin/import/preview", { method: "POST", body });
+    const res = await fetch("/api/admin/import/preview", { method: "POST", body });
     const data = await res.json();
     setLoading(null);
     if (!res.ok) {
@@ -91,7 +91,7 @@ export default function AdminImportPage() {
     const body = new FormData();
     body.append("file", file);
     body.append("updateExisting", String(updateExisting));
-    const res = await adminFetch("/api/admin/import/products", { method: "POST", body });
+    const res = await fetch("/api/admin/import/products", { method: "POST", body });
     const data = await res.json();
     setLoading(null);
     if (!res.ok) {
@@ -109,7 +109,7 @@ export default function AdminImportPage() {
     setPhotoResult(null);
     const body = new FormData();
     Array.from(files).forEach((f) => body.append("files", f));
-    const res = await adminFetch("/api/admin/import/photos", { method: "POST", body });
+    const res = await fetch("/api/admin/import/photos", { method: "POST", body });
     const data = await res.json();
     setLoading(null);
     if (!res.ok) {
@@ -120,12 +120,8 @@ export default function AdminImportPage() {
     setMessage(`Photos: ${data.matched} matched, ${data.unmatched} unmatched.`);
   }
 
-  if (checking) {
+  if (!ready) {
     return <div className="px-4 py-16 text-center text-sm text-stone-500">Loading…</div>;
-  }
-
-  if (!authenticated) {
-    return <AdminLoginForm onLogin={login} error={error} />;
   }
 
   return (
@@ -141,9 +137,6 @@ export default function AdminImportPage() {
           <Link href="/admin" className="underline">
             Listings
           </Link>
-          <button type="button" onClick={() => logout()} className="underline text-stone-500">
-            Log out
-          </button>
         </div>
       </div>
 

@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { adminFetch, AdminLoginForm, useAdminAuth } from "@/components/AdminAuth";
+import { useAdminGate } from "@/components/AdminAuth";
 import type { Order } from "@/lib/types";
 
 export default function AdminOrdersPage() {
-  const { authenticated, checking, error, login, logout } = useAdminAuth();
+  const { ready } = useAdminGate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [message, setMessage] = useState("");
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
@@ -18,14 +18,14 @@ export default function AdminOrdersPage() {
   >({});
 
   async function loadOrders() {
-    const res = await adminFetch("/api/admin/orders");
+    const res = await fetch("/api/admin/orders");
     if (!res.ok) return;
     const data = await res.json();
     setOrders(data.orders || []);
   }
 
   async function loadShippingStatus() {
-    const res = await adminFetch("/api/admin/shipping/status");
+    const res = await fetch("/api/admin/shipping/status");
     if (!res.ok) return;
     const data = await res.json();
     setShippoReady(!!data.shippo?.configured);
@@ -34,17 +34,17 @@ export default function AdminOrdersPage() {
   }
 
   useEffect(() => {
-    if (authenticated) {
+    if (ready) {
       loadOrders();
       loadShippingStatus();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated]);
+  }, [ready]);
 
   async function createLabel(orderId: string) {
     setLoadingLabel(orderId);
     setMessage("");
-    const res = await adminFetch(`/api/admin/orders/${orderId}/label`, {
+    const res = await fetch(`/api/admin/orders/${orderId}/label`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sendEmail: true }),
@@ -80,7 +80,7 @@ export default function AdminOrdersPage() {
       return;
     }
     setMessage("");
-    const res = await adminFetch(`/api/admin/orders/${orderId}/ship`, {
+    const res = await fetch(`/api/admin/orders/${orderId}/ship`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, sendEmail: true }),
@@ -94,16 +94,8 @@ export default function AdminOrdersPage() {
     await loadOrders();
   }
 
-  if (checking) {
+  if (!ready) {
     return <div className="px-4 py-16 text-center text-sm text-stone-500">Loading…</div>;
-  }
-
-  if (!authenticated) {
-    return (
-      <div>
-        <AdminLoginForm onLogin={login} error={error} />
-      </div>
-    );
   }
 
   const needsShip = orders.filter((o) => o.status === "paid" && !o.trackingNumber);
@@ -120,13 +112,6 @@ export default function AdminOrdersPage() {
         <Link href="/admin" className="text-sm underline">
           Products
         </Link>
-        <button
-          type="button"
-          onClick={() => logout()}
-          className="text-sm text-stone-500 underline"
-        >
-          Log out
-        </button>
       </div>
 
       {message && (
