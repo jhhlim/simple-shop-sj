@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAdminGate } from "@/components/AdminAuth";
-import { compressImageForUpload } from "@/lib/compress-image";
+import { compressImageForUpload, isHeicFile } from "@/lib/compress-image";
 
 type PreviewData = {
   format: string;
@@ -99,7 +99,8 @@ async function uploadPhotoBatch(batch: File[]): Promise<PhotoResult & { error?: 
     if (res.status === 413 || /FUNCTION_PAYLOAD_TOO_LARGE|Request Entity Too Large/i.test(raw)) {
       return {
         ...emptyPhotoResult(),
-        error: "Photo still too large after compression",
+        error:
+          "Photo is too large to upload. For HEIC use a file under 4MB, or export as JPEG.",
       };
     }
 
@@ -228,11 +229,29 @@ export default function AdminImportPage() {
     for (let batchIndex = 0; batchIndex < chunks.length; batchIndex++) {
       const batch = chunks[batchIndex]!;
       const file = batch[0]!;
-      setPhotoProgress(`Uploading ${file.name} (${batchIndex + 1} of ${list.length})…`);
+      const heic = isHeicFile(file);
+      setPhotoProgress(
+        heic
+          ? `Uploading HEIC ${file.name} (${batchIndex + 1} of ${list.length})…`
+          : `Uploading ${file.name} (${batchIndex + 1} of ${list.length})…`
+      );
 
       let uploadBatch: File[];
       try {
-        uploadBatch = await Promise.all(batch.map((f) => compressImageForUpload(f)));
+        uploadBatch = await Promise.all(
+          batch.map(async (f) => {
+            if (isHeicFile(f)) {
+              // Browsers cannot decode HEIC — upload original; server converts to JPEG.
+              if (f.size > 4 * 1024 * 1024) {
+                throw new Error(
+                  "HEIC file is too large (max 4MB). Export as JPEG or use a smaller photo."
+                );
+              }
+              return f;
+            }
+            return compressImageForUpload(f);
+          })
+        );
       } catch (err) {
         combined.errors.push(
           `${file.name}: ${err instanceof Error ? err.message : "Could not prepare photo. Try exporting as JPG."}`

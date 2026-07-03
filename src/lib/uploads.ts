@@ -6,8 +6,8 @@ import { randomUUID } from "crypto";
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 const HEIC_MIME = new Set(["image/heic", "image/heif"]);
 
-const HEIC_SERVER_ERROR =
-  "HEIC is not accepted on the server. Export as JPEG in Photos or Preview, or use Safari so the browser can convert it first.";
+const HEIC_CONVERT_ERROR =
+  "Could not convert HEIC. Try exporting as JPEG.";
 
 export type UploadBytes = {
   buffer: Buffer;
@@ -24,12 +24,56 @@ function blobStorageConfigured(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 }
 
-/** Only extension .heic/.heif or mime image/heic|heif — never sniff bytes. */
+/** Extension .heic/.heif or mime image/heic|heif. */
 function isHeicNameOrType(name: string, type: string): boolean {
   const mime = (type || "").toLowerCase();
   if (HEIC_MIME.has(mime)) return true;
   const ext = path.extname(name).toLowerCase();
   return ext === ".heic" || ext === ".heif";
+}
+
+/** ISO BMFF: bytes 4–7 are `ftyp`, brands include heic/heif/mif1. */
+function isHeicMagic(buffer: Buffer): boolean {
+  if (buffer.length < 12) return false;
+  if (buffer.toString("ascii", 4, 8) !== "ftyp") return false;
+  const brands = buffer
+    .subarray(8, Math.min(buffer.length, 32))
+    .toString("ascii")
+    .toLowerCase();
+  return (
+    brands.includes("heic") ||
+    brands.includes("heif") ||
+    brands.includes("mif1")
+  );
+}
+
+function isHeicUpload(upload: UploadBytes): boolean {
+  return isHeicNameOrType(upload.name, upload.type) || isHeicMagic(upload.buffer);
+}
+
+/**
+ * Lazy-import heic-convert only when needed so cold starts for JPEG/PNG
+ * uploads never load libheif.
+ */
+async function convertHeicToJpeg(buffer: Buffer): Promise<Buffer> {
+  try {
+    const mod = await import("heic-convert");
+    const convert = (mod as { default?: unknown }).default ?? mod;
+    const output = await (
+      convert as (opts: {
+        buffer: Buffer;
+        format: "JPEG" | "PNG";
+        quality: number;
+      }) => Promise<ArrayBuffer>
+    )({
+      buffer,
+      format: "JPEG",
+      quality: 0.85,
+    });
+    return Buffer.from(output);
+  } catch {
+    throw new Error(HEIC_CONVERT_ERROR);
+  }
 }
 
 function contentTypeFor(name: string, type: string, safeExt: string): string {
@@ -80,21 +124,27 @@ export function isImageUpload(upload: UploadBytes): boolean {
 }
 
 /**
- * Persist an uploaded image (JPEG/PNG/WebP/GIF).
- * HEIC must be converted client-side — no server-side heic-convert.
- * Detection is name/mime only (renamed .jpg files are not rejected as HEIC).
+ * Persist an uploaded image. HEIC/HEIF is converted to JPEG server-side
+ * (browsers like Chrome cannot decode HEIC). JPEG/PNG/WebP/GIF are stored as-is.
  */
 export async function saveUploadedImage(upload: UploadBytes): Promise<string> {
-  if (isHeicNameOrType(upload.name, upload.type)) {
-    throw new Error(HEIC_SERVER_ERROR);
+  let buffer = upload.buffer;
+  let name = upload.name;
+  let type = upload.type;
+
+  if (isHeicUpload(upload)) {
+    buffer = await convertHeicToJpeg(upload.buffer);
+    const base = path.basename(upload.name, path.extname(upload.name)).trim() || "photo";
+    name = `${base}.jpg`;
+    type = "image/jpeg";
   }
 
-  const safeExt = safeImageExt(upload.name);
+  const safeExt = safeImageExt(name);
   const filename = `${randomUUID()}${safeExt}`;
-  const contentType = contentTypeFor(upload.name, upload.type, safeExt);
+  const contentType = contentTypeFor(name, type, safeExt);
 
   if (blobStorageConfigured()) {
-    const blob = await put(`uploads/${filename}`, upload.buffer, {
+    const blob = await put(`uploads/${filename}`, buffer, {
       access: "public",
       contentType,
     });
@@ -109,6 +159,6 @@ export async function saveUploadedImage(upload: UploadBytes): Promise<string> {
 
   const uploadDir = path.join(process.cwd(), "public", "uploads");
   await fs.mkdir(uploadDir, { recursive: true });
-  await fs.writeFile(path.join(uploadDir, filename), upload.buffer);
+  await fs.writeFile(path.join(uploadDir, filename), buffer);
   return `/uploads/${filename}`;
 }

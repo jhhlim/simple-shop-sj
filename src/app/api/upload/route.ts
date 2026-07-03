@@ -29,7 +29,11 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Upload failed";
     const status =
-      message.includes("HEIC") || message.includes("not configured") ? 400 : 500;
+      message.includes("HEIC") ||
+      message.includes("Could not convert") ||
+      message.includes("not configured")
+        ? 400
+        : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -82,11 +82,6 @@ async function loadDrawable(file: File): Promise<{ source: Drawable; close?: () 
   try {
     return await loadViaImageElement(file);
   } catch {
-    if (isHeicFile(file)) {
-      throw new Error(
-        "This browser cannot read HEIC photos. Export as JPEG in Photos or Preview, then upload."
-      );
-    }
     throw new Error(
       "Could not read this image. Export as JPEG in Photos or Preview, then upload."
     );
@@ -129,12 +124,11 @@ function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<B
 }
 
 /**
- * Resize and re-encode a photo to JPEG so the upload payload stays under
+ * Resize and re-encode a JPEG/PNG/WebP photo so the upload payload stays under
  * Vercel's serverless body limit (~4.5MB). Target is under 3MB.
  *
- * HEIC: uses createImageBitmap / <img> when the browser can decode it (Safari),
- * then canvas → JPEG. If decode fails, asks the user to export as JPEG.
- * Does not use heic2any / heic-convert.
+ * Do not call this for HEIC/HEIF — those are uploaded as-is and converted
+ * server-side (browsers like Chrome cannot decode HEIC).
  */
 export async function compressImageForUpload(file: File): Promise<File> {
   const loaded = await loadDrawable(file);

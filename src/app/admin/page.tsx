@@ -123,7 +123,7 @@ function PhotoFieldStatus({
     return (
       <p className="mt-1 text-xs font-medium text-stone-600">
         {converting
-          ? `Converting HEIC${fileName ? ` “${fileName}”` : ""}…`
+          ? `Uploading HEIC${fileName ? ` “${fileName}”` : ""}…`
           : `Uploading${fileName ? ` “${fileName}”` : ""}…`}
       </p>
     );
@@ -207,24 +207,31 @@ export default function AdminPage() {
     setPhotoError((prev) => ({ ...prev, [target]: "" }));
     setPhotoFileName((prev) => ({ ...prev, [target]: file.name }));
     setPhotoIsHeic((prev) => ({ ...prev, [target]: wasHeic }));
-    // Always show a local preview immediately — do not wait for upload.
-    setLocalPreview(target, file);
 
     try {
-      // Resize + JPEG-encode client-side so phone photos stay under Vercel body limits.
-      // HEIC: Safari can decode via createImageBitmap/canvas; other browsers get a clear export hint.
       let uploadFile: File;
-      try {
-        uploadFile = await compressImageForUpload(file);
-      } catch (prepErr) {
-        throw new Error(
-          prepErr instanceof Error
-            ? prepErr.message
-            : "Could not prepare photo for upload"
-        );
+
+      if (wasHeic) {
+        // Browsers (esp. Chrome) cannot decode HEIC — upload original; server converts to JPEG.
+        if (file.size > 4 * 1024 * 1024) {
+          throw new Error(
+            "HEIC file is too large (max 4MB). Export as JPEG or use a smaller photo."
+          );
+        }
+        uploadFile = file;
+      } else {
+        // Resize + JPEG-encode client-side so phone photos stay under Vercel body limits.
+        try {
+          uploadFile = await compressImageForUpload(file);
+        } catch (prepErr) {
+          throw new Error(
+            prepErr instanceof Error
+              ? prepErr.message
+              : "Could not prepare photo for upload"
+          );
+        }
+        setLocalPreview(target, uploadFile);
       }
-      // Preview the compressed JPEG (works even when the original was HEIC).
-      setLocalPreview(target, uploadFile);
 
       const body = new FormData();
       // Two-arg append preserves File name + type (image/jpeg, etc.).
@@ -251,7 +258,9 @@ export default function AdminPage() {
         /FUNCTION_PAYLOAD_TOO_LARGE|Request Entity Too Large/i.test(raw)
       ) {
         throw new Error(
-          "Photo still too large after compression. Try a smaller photo or export as JPEG."
+          wasHeic
+            ? "HEIC file is too large to upload. Export as JPEG or use a smaller photo."
+            : "Photo still too large after compression. Try a smaller photo or export as JPEG."
         );
       }
 
@@ -290,7 +299,7 @@ export default function AdminPage() {
       const errorText = err instanceof Error ? err.message : "Upload failed";
       setPhotoError((prev) => ({ ...prev, [target]: errorText }));
       setMessage(errorText);
-      // Keep local preview so the user still sees what they picked (JPEG preview after compress).
+      // Keep local JPEG preview when compress succeeded but upload failed.
     } finally {
       setUploading(null);
     }
