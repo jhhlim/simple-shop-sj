@@ -12,10 +12,18 @@ export async function POST(request: Request) {
   if (denied) return denied;
 
   const body = await request.json();
-  const { name, description, price, category, imageUrl, stock } = body;
+  const { name, description, price, category, imageUrl, stock, sku } = body;
 
   if (!name || !description || price == null || !category) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  const skuValue = typeof sku === "string" ? sku.trim() : "";
+  if (!skuValue) {
+    return NextResponse.json(
+      { error: "SKU is required — used to match photos during mass upload." },
+      { status: 400 }
+    );
   }
 
   const product = await createProduct({
@@ -25,6 +33,7 @@ export async function POST(request: Request) {
     category,
     imageUrl: imageUrl ? String(imageUrl) : "",
     stock: stock != null ? Number(stock) : 1,
+    sku: skuValue,
   });
 
   return NextResponse.json(product, { status: 201 });
