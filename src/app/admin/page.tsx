@@ -6,8 +6,6 @@ import { FormEvent, useEffect, useState } from "react";
 import { useAdminGate } from "@/components/AdminAuth";
 import type { Product } from "@/lib/types";
 
-type CouponRow = { code: string; percentOff: number; active: boolean };
-
 const emptyForm = {
   name: "",
   description: "",
@@ -15,35 +13,26 @@ const emptyForm = {
   category: "goods" as Product["category"],
   imageUrl: "",
   stock: "1",
+  sku: "",
 };
 
 export default function AdminPage() {
   const { ready } = useAdminGate();
   const [products, setProducts] = useState<Product[]>([]);
-  const [coupons, setCoupons] = useState<CouponRow[]>([]);
   const [message, setMessage] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [uploading, setUploading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
-  const [couponForm, setCouponForm] = useState({ code: "", percentOff: "10" });
 
   async function loadProducts() {
     const res = await fetch("/api/products");
     setProducts(await res.json());
   }
 
-  async function loadCoupons() {
-    const res = await fetch("/api/admin/coupons");
-    if (!res.ok) return;
-    const data = await res.json();
-    setCoupons(data.coupons || []);
-  }
-
   useEffect(() => {
     if (ready) {
       loadProducts();
-      loadCoupons();
     }
   }, [ready]);
 
@@ -69,11 +58,17 @@ export default function AdminPage() {
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setMessage("");
+    const sku = form.sku.trim();
+    if (!sku) {
+      setMessage("SKU is required — used to match photos during mass upload.");
+      return;
+    }
     const res = await fetch("/api/products", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
+        sku,
         price: Number(form.price),
         stock: Number(form.stock),
       }),
@@ -97,6 +92,7 @@ export default function AdminPage() {
       category: product.category,
       imageUrl: product.imageUrl,
       stock: String(product.stock),
+      sku: product.sku || "",
     });
   }
 
@@ -127,44 +123,6 @@ export default function AdminPage() {
     if (!confirm("Delete this product?")) return;
     await fetch(`/api/products/${id}`, { method: "DELETE" });
     await loadProducts();
-  }
-
-  async function handleCreateCoupon(e: FormEvent) {
-    e.preventDefault();
-    setMessage("");
-    const res = await fetch("/api/admin/coupons", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: couponForm.code,
-        percentOff: Number(couponForm.percentOff),
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setMessage(data.error || "Failed to create coupon");
-      return;
-    }
-    setCouponForm({ code: "", percentOff: "10" });
-    setMessage(`Coupon ${data.code} created.`);
-    await loadCoupons();
-  }
-
-  async function toggleCoupon(code: string, active: boolean) {
-    await fetch("/api/admin/coupons", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, active }),
-    });
-    await loadCoupons();
-  }
-
-  async function removeCoupon(code: string) {
-    if (!confirm(`Delete coupon ${code}?`)) return;
-    await fetch(`/api/admin/coupons?code=${encodeURIComponent(code)}`, {
-      method: "DELETE",
-    });
-    await loadCoupons();
   }
 
   if (!ready) {
@@ -219,6 +177,20 @@ export default function AdminPage() {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
             />
+          </label>
+          <label className="block text-sm sm:col-span-2">
+            SKU <span className="text-red-600">*</span>
+            <input
+              required
+              value={form.sku}
+              onChange={(e) => setForm({ ...form, sku: e.target.value })}
+              placeholder="e.g. 710090R"
+              className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-stone-500">
+              Required for photo mass upload — name image files{" "}
+              <code className="rounded bg-stone-100 px-1">SKU.jpg</code> to match this item.
+            </span>
           </label>
           <label className="block text-sm sm:col-span-2">
             Description
@@ -434,67 +406,6 @@ export default function AdminPage() {
           </div>
         ))}
       </div>
-
-      <form
-        onSubmit={handleCreateCoupon}
-        className="mt-10 space-y-4 rounded-xl border border-stone-200 bg-white p-5"
-      >
-        <h2 className="font-medium">Coupon codes</h2>
-        <div className="flex flex-wrap gap-3">
-          <input
-            required
-            placeholder="CODE"
-            value={couponForm.code}
-            onChange={(e) => setCouponForm({ ...couponForm, code: e.target.value.toUpperCase() })}
-            className="rounded-lg border border-stone-300 px-3 py-2 text-sm uppercase"
-          />
-          <input
-            required
-            type="number"
-            min="1"
-            max="100"
-            value={couponForm.percentOff}
-            onChange={(e) => setCouponForm({ ...couponForm, percentOff: e.target.value })}
-            className="w-24 rounded-lg border border-stone-300 px-3 py-2 text-sm"
-          />
-          <span className="self-center text-sm text-stone-500">% off</span>
-          <button
-            type="submit"
-            className="rounded-lg bg-stone-900 px-4 py-2 text-sm text-white hover:bg-stone-700"
-          >
-            Add coupon
-          </button>
-        </div>
-        <ul className="space-y-2 text-sm">
-          {coupons.map((c) => (
-            <li
-              key={c.code}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-100 px-3 py-2"
-            >
-              <span>
-                <strong>{c.code}</strong> — {c.percentOff}% off{" "}
-                {!c.active && <span className="text-amber-700">(inactive)</span>}
-              </span>
-              <span className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => toggleCoupon(c.code, !c.active)}
-                  className="underline"
-                >
-                  {c.active ? "Deactivate" : "Activate"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeCoupon(c.code)}
-                  className="text-red-600 underline"
-                >
-                  Delete
-                </button>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </form>
 
       {message && <p className="mt-4 text-sm text-stone-600">{message}</p>}
     </div>
