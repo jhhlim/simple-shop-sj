@@ -10,13 +10,17 @@ function safeImageExt(file: File): string {
   return IMAGE_EXT.has(ext) ? ext : ".jpg";
 }
 
+function blobStorageConfigured(): boolean {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
+}
+
 export async function saveUploadedImage(file: File): Promise<string> {
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
   const safeExt = safeImageExt(file);
   const filename = `${randomUUID()}${safeExt}`;
 
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
+  if (blobStorageConfigured()) {
     const blob = await put(`uploads/${filename}`, buffer, {
       access: "public",
       contentType: file.type || `image/${safeExt.replace(/^\./, "")}`,
