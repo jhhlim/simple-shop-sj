@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import type { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const COOKIE_NAME = "limware_admin_sess";
+export const ADMIN_COOKIE_NAME = "limware_admin_sess";
 const TTL_MS = 24 * 60 * 60 * 1000;
 
 function adminSecret(): string {
@@ -18,19 +19,15 @@ export function signAdminSession(): string {
 }
 
 export function verifyAdminSessionValue(value: string): boolean {
-  const dot = value.indexOf(".");
-  if (dot < 0) return false;
-  const payload = value.slice(0, dot);
-  const sig = value.slice(dot + 1);
-  const expected = createHmac("sha256", adminSecret()).update(payload).digest("base64url");
   try {
+    const dot = value.indexOf(".");
+    if (dot < 0) return false;
+    const payload = value.slice(0, dot);
+    const sig = value.slice(dot + 1);
+    const expected = createHmac("sha256", adminSecret()).update(payload).digest("base64url");
     const a = Buffer.from(sig);
     const b = Buffer.from(expected);
     if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
-  } catch {
-    return false;
-  }
-  try {
     const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as { exp: number };
     return data.exp > Date.now();
   } catch {
@@ -38,9 +35,35 @@ export function verifyAdminSessionValue(value: string): boolean {
   }
 }
 
+export function adminCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: Math.floor(TTL_MS / 1000),
+  };
+}
+
+/** Attach admin session cookie to an API response (required for persistence in Route Handlers). */
+export function attachAdminSessionCookie(response: NextResponse): NextResponse {
+  response.cookies.set(ADMIN_COOKIE_NAME, signAdminSession(), adminCookieOptions());
+  return response;
+}
+
+export function clearAdminSessionCookieOnResponse(response: NextResponse): NextResponse {
+  response.cookies.set(ADMIN_COOKIE_NAME, "", {
+    ...adminCookieOptions(),
+    maxAge: 0,
+  });
+  return response;
+}
+
 function parseCookieToken(cookieHeader: string | null): string | null {
   if (!cookieHeader) return null;
-  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+  const match = cookieHeader.match(
+    new RegExp(`(?:^|;\\s*)${ADMIN_COOKIE_NAME}=([^;]+)`)
+  );
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
@@ -54,23 +77,17 @@ export function isAdminAuthorized(request: Request): boolean {
 
 export async function setAdminSessionCookie(): Promise<void> {
   const jar = await cookies();
-  jar.set(COOKIE_NAME, signAdminSession(), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: Math.floor(TTL_MS / 1000),
-  });
+  jar.set(ADMIN_COOKIE_NAME, signAdminSession(), adminCookieOptions());
 }
 
 export async function clearAdminSessionCookie(): Promise<void> {
   const jar = await cookies();
-  jar.delete(COOKIE_NAME);
+  jar.delete({ name: ADMIN_COOKIE_NAME, path: "/" });
 }
 
 export async function hasAdminSession(): Promise<boolean> {
   const jar = await cookies();
-  const token = jar.get(COOKIE_NAME)?.value;
+  const token = jar.get(ADMIN_COOKIE_NAME)?.value;
   return !!(token && verifyAdminSessionValue(token));
 }
 

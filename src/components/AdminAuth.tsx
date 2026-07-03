@@ -31,7 +31,7 @@ export function useAdminAuth() {
       setError(data.error || "Wrong password");
       return false;
     }
-    setAuthenticated(true);
+    await refresh();
     return true;
   }
 
