@@ -1,7 +1,7 @@
-import * as XLSX from "xlsx";
 import { requireAdmin } from "@/lib/admin-auth";
-import { productsToCsv } from "@/lib/product-export";
+import { productsToCsv, productsToExportRows } from "@/lib/product-export";
 import { getProducts } from "@/lib/products";
+import { rowsToXlsxBytes } from "@/lib/spreadsheet";
 
 export async function GET(request: Request) {
   const denied = await requireAdmin();
@@ -10,23 +10,21 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const format = searchParams.get("format") || "csv";
   const products = await getProducts();
-  const csv = productsToCsv(products);
   const date = new Date().toISOString().slice(0, 10);
 
   if (format === "xlsx") {
-    const workbook = XLSX.read(csv, { type: "string" });
-    const bytes = Uint8Array.from(
-      XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as ArrayLike<number>
-    );
-    return new Response(new Blob([bytes]), {
+    const bytes = rowsToXlsxBytes(productsToExportRows(products));
+    return new Response(new Uint8Array(bytes), {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="limware-listings-${date}.xlsx"`,
+        "Content-Length": String(bytes.length),
       },
     });
   }
 
+  const csv = productsToCsv(products);
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

@@ -17,3 +17,15 @@ Vintage silver ring,Size 7 sterling silver ring,45.00,Jewelry,1,RING001,
 Used denim jacket,Levi's medium wash jacket,25.00,Used goods,1,JKT002,
 One-of-a-kind find,Unique collectible item,10.00,Other,1,MISC003,
 `;
+
+export function rowsToXlsxBytes(rows: (string | number)[][]): Buffer {
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Listings");
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+export function csvTextToXlsxBytes(csv: string): Buffer {
+  const wb = XLSX.read(csv, { type: "string", raw: true });
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}

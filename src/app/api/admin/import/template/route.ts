@@ -1,6 +1,5 @@
-import * as XLSX from "xlsx";
 import { requireAdmin } from "@/lib/admin-auth";
-import { IMPORT_TEMPLATE_CSV } from "@/lib/spreadsheet";
+import { csvTextToXlsxBytes, IMPORT_TEMPLATE_CSV } from "@/lib/spreadsheet";
 
 export async function GET(request: Request) {
   const denied = await requireAdmin();
@@ -18,16 +17,13 @@ export async function GET(request: Request) {
     });
   }
 
-  const workbook = XLSX.read(IMPORT_TEMPLATE_CSV, { type: "string" });
-  const bytes = Uint8Array.from(
-    XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as ArrayLike<number>
-  );
-
-  return new Response(new Blob([bytes]), {
+  const bytes = csvTextToXlsxBytes(IMPORT_TEMPLATE_CSV);
+  return new Response(new Uint8Array(bytes), {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": 'attachment; filename="limware-import-template.xlsx"',
+      "Content-Length": String(bytes.length),
     },
   });
 }

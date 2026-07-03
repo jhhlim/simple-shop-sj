@@ -37,3 +37,7 @@ export function productsToCsv(products: Product[]): string {
   }
   return lines.join("\n");
 }
+
+export function productsToExportRows(products: Product[]): (string | number)[][] {
+  return [[...PRODUCT_EXPORT_HEADERS], ...products.map(productToExportRow)];
+}
