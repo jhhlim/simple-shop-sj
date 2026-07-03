@@ -347,18 +347,33 @@ export default function AdminPage() {
                     <option value="other">Other</option>
                   </select>
                 </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={uploading}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleUpload(file, "edit");
-                  }}
-                  className="text-sm"
-                />
-                {editForm.imageUrl && (
-                  <p className="text-xs text-stone-500">Image: {editForm.imageUrl}</p>
+                <label className="block text-sm">
+                  Photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={uploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleUpload(file, "edit");
+                    }}
+                    className="mt-1 block w-full text-sm"
+                  />
+                </label>
+                {editForm.imageUrl ? (
+                  <div className="relative h-32 w-32 overflow-hidden rounded-lg bg-stone-100">
+                    <Image
+                      src={editForm.imageUrl}
+                      alt="Preview"
+                      fill
+                      className="object-cover"
+                      sizes="128px"
+                    />
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-dashed border-stone-300 bg-stone-50 px-3 py-2 text-xs text-stone-500">
+                    No photo — upload an image above
+                  </p>
                 )}
                 <div className="flex gap-2">
                   <button
@@ -378,12 +393,29 @@ export default function AdminPage() {
               </form>
             ) : (
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium">{p.name}</p>
-                  <p className="text-sm text-stone-500">
-                    ${p.price.toFixed(2)} · {p.category} · {p.stock} in stock · {p.soldCount}{" "}
-                    sold
-                  </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-stone-100">
+                    {p.imageUrl ? (
+                      <Image
+                        src={p.imageUrl}
+                        alt={p.name}
+                        fill
+                        className="object-cover"
+                        sizes="64px"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center border border-dashed border-stone-300 px-1 text-center text-[10px] font-medium uppercase tracking-wide text-stone-400">
+                        No photo
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium">{p.name}</p>
+                    <p className="text-sm text-stone-500">
+                      ${p.price.toFixed(2)} · {p.category} · {p.stock} in stock · {p.soldCount}{" "}
+                      sold
+                    </p>
+                  </div>
                 </div>
                 <div className="flex gap-3 text-sm">
                   <button type="button" onClick={() => startEdit(p)} className="underline">
