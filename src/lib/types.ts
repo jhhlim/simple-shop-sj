@@ -1,9 +1,12 @@
+export type ProductCondition = "new" | "excellent" | "pre-owned";
+
 export type Product = {
   id: string;
   name: string;
   description: string;
   price: number;
   category: "jewelry" | "goods" | "other";
+  condition?: ProductCondition;
   imageUrl: string;
   stock: number;
   soldCount: number;

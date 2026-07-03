@@ -2,14 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ProductCard } from "@/components/ProductCard";
+import {
+  BROWSE_CATEGORIES,
+  productMatchesBrowseCategory,
+  type BrowseCategoryId,
+} from "@/lib/browse-categories";
 import type { Product } from "@/lib/types";
-
-const CATEGORIES: { value: "all" | Product["category"]; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "goods", label: "Used goods" },
-  { value: "jewelry", label: "Jewelry" },
-  { value: "other", label: "Other" },
-];
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
@@ -32,16 +30,38 @@ function getVisiblePages(current: number, total: number): (number | "ellipsis")[
   return pages;
 }
 
-export function ProductCatalog({ products }: { products: Product[] }) {
+type ProductCatalogProps = {
+  products: Product[];
+  browseCategory?: BrowseCategoryId | "all";
+  onBrowseCategoryChange?: (category: BrowseCategoryId | "all") => void;
+};
+
+export function ProductCatalog({
+  products,
+  browseCategory: externalBrowseCategory,
+  onBrowseCategoryChange,
+}: ProductCatalogProps) {
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<"all" | Product["category"]>("all");
+  const [internalBrowseCategory, setInternalBrowseCategory] = useState<BrowseCategoryId | "all">(
+    "all"
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  const browseCategory = externalBrowseCategory ?? internalBrowseCategory;
+
+  function setBrowseCategory(next: BrowseCategoryId | "all") {
+    if (onBrowseCategoryChange) {
+      onBrowseCategoryChange(next);
+    } else {
+      setInternalBrowseCategory(next);
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter((p) => {
-      if (category !== "all" && p.category !== category) return false;
+      if (!productMatchesBrowseCategory(p, browseCategory)) return false;
       if (!q) return true;
       return (
         p.name.toLowerCase().includes(q) ||
@@ -49,7 +69,7 @@ export function ProductCatalog({ products }: { products: Product[] }) {
         p.category.toLowerCase().includes(q)
       );
     });
-  }, [products, query, category]);
+  }, [products, query, browseCategory]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -61,14 +81,14 @@ export function ProductCatalog({ products }: { products: Product[] }) {
 
   useEffect(() => {
     setPage(1);
-  }, [query, category, pageSize]);
+  }, [query, browseCategory, pageSize]);
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
   }, [page, safePage]);
 
   function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function goToPage(nextPage: number) {
@@ -87,32 +107,30 @@ export function ProductCatalog({ products }: { products: Product[] }) {
   const rangeStart = filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const rangeEnd = Math.min(safePage * pageSize, filtered.length);
 
+  const activeLabel =
+    browseCategory === "all"
+      ? "All items"
+      : BROWSE_CATEGORIES.find((c) => c.id === browseCategory)?.label ?? "All items";
+
   return (
     <div>
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <input
           type="search"
-          placeholder="Search by title or description…"
+          placeholder="What are you looking for today?"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm sm:max-w-md"
+          className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm placeholder:text-stone-400 focus:border-stone-400 focus:outline-none focus:ring-1 focus:ring-stone-400 sm:max-w-md"
         />
-        <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.value}
-              type="button"
-              onClick={() => setCategory(c.value)}
-              className={`rounded-full px-3 py-1 text-sm ${
-                category === c.value
-                  ? "bg-stone-900 text-white"
-                  : "bg-stone-100 text-stone-700 hover:bg-stone-200"
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
+        {browseCategory !== "all" && (
+          <button
+            type="button"
+            onClick={() => setBrowseCategory("all")}
+            className="shrink-0 self-start rounded-full bg-stone-100 px-3 py-1 text-sm text-stone-700 hover:bg-stone-200"
+          >
+            Clear filter: {activeLabel} ×
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -124,6 +142,9 @@ export function ProductCatalog({ products }: { products: Product[] }) {
           <div className="mb-4 flex flex-col gap-3 text-sm text-stone-600 sm:flex-row sm:items-center sm:justify-between">
             <p>
               Showing {rangeStart}–{rangeEnd} of {filtered.length}
+              {browseCategory !== "all" && (
+                <span className="text-stone-400"> in {activeLabel}</span>
+              )}
             </p>
             <label className="flex items-center gap-2">
               <span>Per page</span>
@@ -141,7 +162,7 @@ export function ProductCatalog({ products }: { products: Product[] }) {
             </label>
           </div>
 
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {paginated.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}

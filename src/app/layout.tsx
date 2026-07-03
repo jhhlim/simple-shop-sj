@@ -12,8 +12,9 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: `${SHOP_NAME} — Used Goods & Jewelry`,
-  description: "Shop our curated used goods and jewelry. Flat $5 shipping — we pack and ship to you.",
+  title: `${SHOP_NAME} — Quality Fashion, Toys & Unique Finds`,
+  description:
+    "Family-owned California resale shop. Carefully inspected clothing, shoes, bags, jewelry, toys & collectibles. Flat $5 shipping.",
 };
 
 export default function RootLayout({
