@@ -2,16 +2,29 @@
 
 import Link from "next/link";
 import { signIn } from "next-auth/react";
-import { FormEvent, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams();
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("verified") === "1") {
+      setNotice("Your email is confirmed. Sign in to continue.");
+    } else if (searchParams.get("verify") === "invalid") {
+      setNotice("That confirmation link is invalid or expired. Sign in to resend one.");
+    } else if (searchParams.get("verify") === "missing") {
+      setNotice("Confirmation link was missing. Sign in to resend one.");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetch("/api/auth/status")
@@ -85,6 +98,16 @@ export default function LoginPage() {
             className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
           />
         </label>
+        <p className="text-right text-sm">
+          <Link href="/forgot-password" className="underline text-stone-600 hover:text-stone-900">
+            Forgot password?
+          </Link>
+        </p>
+        {notice && (
+          <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
+            {notice}
+          </p>
+        )}
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
           type="submit"
@@ -102,5 +125,13 @@ export default function LoginPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="px-4 py-12 text-center text-sm">Loading…</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

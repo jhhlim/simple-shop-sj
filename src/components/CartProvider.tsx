@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { useSession } from "next-auth/react";
+import { functionalCookiesAllowed } from "@/lib/cookie-consent";
 import type { CartItem } from "@/lib/types";
 
 const STORAGE_KEY = "lim-resale-cart";
@@ -42,12 +43,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) setItems(JSON.parse(raw) as CartItem[]);
-      const savedCoupon = localStorage.getItem(COUPON_KEY);
-      if (savedCoupon) setCouponCodeState(savedCoupon);
+      if (functionalCookiesAllowed()) {
+        const savedCoupon = localStorage.getItem(COUPON_KEY);
+        if (savedCoupon) setCouponCodeState(savedCoupon);
+      }
     } catch {
       setItems([]);
     }
     setHydrated(true);
+
+    const onPrefs = () => {
+      if (!functionalCookiesAllowed()) {
+        localStorage.removeItem(COUPON_KEY);
+        setCouponCodeState(null);
+      }
+    };
+    window.addEventListener("cookie-preferences-updated", onPrefs);
+    return () => window.removeEventListener("cookie-preferences-updated", onPrefs);
   }, []);
 
   useEffect(() => {
@@ -124,8 +136,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const setCouponCode = useCallback((code: string | null) => {
     setCouponCodeState(code);
-    if (code) localStorage.setItem(COUPON_KEY, code);
-    else localStorage.removeItem(COUPON_KEY);
+    if (code && functionalCookiesAllowed()) {
+      localStorage.setItem(COUPON_KEY, code);
+    } else {
+      localStorage.removeItem(COUPON_KEY);
+    }
   }, []);
 
   const addItem = useCallback((productId: string) => {

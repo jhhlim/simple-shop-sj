@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
+import { PENDING_ORDER_MINUTES } from "./constants";
 import { ensureSchema, asRows, getSql, isPostgresEnabled } from "./pg";
+import { confirmSale, releaseStock } from "./products";
 import { assertCanPersistData } from "./storage";
 import type { Order, TrackingStatus } from "./types";
 
@@ -69,7 +71,39 @@ async function updateOrderMutator(
   return order;
 }
 
+function isOrderExpired(order: Order): boolean {
+  if (order.status !== "pending" || !order.expiresAt) return false;
+  return new Date(order.expiresAt).getTime() <= Date.now();
+}
+
+export async function expireOrderIfNeeded(order: Order): Promise<Order> {
+  if (!isOrderExpired(order)) return order;
+
+  await updateOrderMutator(order.id, (o) => {
+    o.status = "expired";
+  });
+  await releaseStock(
+    order.items.map((i) => ({ productId: i.productId, quantity: i.quantity }))
+  );
+  return (await getOrder(order.id))!;
+}
+
+export async function expireStalePendingOrders(): Promise<void> {
+  const orders = await readOrders();
+  const now = Date.now();
+  for (const order of orders) {
+    if (
+      order.status === "pending" &&
+      order.expiresAt &&
+      new Date(order.expiresAt).getTime() <= now
+    ) {
+      await expireOrderIfNeeded(order);
+    }
+  }
+}
+
 export async function getOrders(): Promise<Order[]> {
+  await expireStalePendingOrders();
   const orders = await readOrders();
   return orders.sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -77,8 +111,12 @@ export async function getOrders(): Promise<Order[]> {
 }
 
 export async function getOrder(id: string): Promise<Order | undefined> {
-  const orders = await readOrders();
-  return orders.find((o) => o.id === id);
+  const order = (await readOrders()).find((o) => o.id === id);
+  if (!order) return undefined;
+  if (isOrderExpired(order)) {
+    return expireOrderIfNeeded(order);
+  }
+  return order;
 }
 
 export async function getOrderByTrackingNumber(
@@ -154,24 +192,84 @@ export async function getOrderForCustomer(
   return order;
 }
 
+export async function getOrdersForAccount(userId: string, email: string): Promise<Order[]> {
+  await expireStalePendingOrders();
+  const orders = await readOrders();
+  const normalizedEmail = email.trim().toLowerCase();
+  return orders
+    .filter((o) => {
+      if (o.status === "pending" || o.status === "expired" || o.status === "failed") {
+        return false;
+      }
+      if (o.userId === userId) return true;
+      return o.shipping.email.trim().toLowerCase() === normalizedEmail;
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
 export async function createOrder(
-  input: Omit<Order, "id" | "createdAt" | "status">
+  input: Omit<Order, "id" | "createdAt" | "status" | "expiresAt"> & {
+    userId?: string;
+    stripeSessionId?: string;
+    paypalOrderId?: string;
+  }
 ): Promise<Order> {
+  const now = new Date();
   const order: Order = {
     ...input,
     id: randomUUID(),
     status: "pending",
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + PENDING_ORDER_MINUTES * 60 * 1000).toISOString(),
   };
   await writeOrder(order);
   return order;
 }
 
-export async function markOrderPaid(id: string, paymentId: string) {
+export async function updateOrderPaymentRefs(
+  id: string,
+  refs: { stripeSessionId?: string; paypalOrderId?: string }
+): Promise<Order | null> {
   return updateOrderMutator(id, (order) => {
-    order.status = "paid";
-    order.paymentId = paymentId;
+    if (refs.stripeSessionId) order.stripeSessionId = refs.stripeSessionId;
+    if (refs.paypalOrderId) order.paypalOrderId = refs.paypalOrderId;
   });
+}
+
+export async function markOrderPaid(id: string, paymentId: string) {
+  const order = await getOrder(id);
+  if (!order) return null;
+  if (order.status === "expired") return null;
+
+  const updated = await updateOrderMutator(id, (o) => {
+    o.status = "paid";
+    o.paymentId = paymentId;
+    o.expiresAt = undefined;
+  });
+
+  if (updated) {
+    await confirmSale(
+      updated.items.map((i) => ({ productId: i.productId, quantity: i.quantity }))
+    );
+  }
+  return updated;
+}
+
+export async function markOrderFailed(id: string) {
+  const order = await getOrder(id);
+  if (!order || order.status !== "pending") return null;
+
+  const updated = await updateOrderMutator(id, (o) => {
+    o.status = "failed";
+    o.expiresAt = undefined;
+  });
+
+  if (updated) {
+    await releaseStock(
+      updated.items.map((i) => ({ productId: i.productId, quantity: i.quantity }))
+    );
+  }
+  return updated;
 }
 
 export async function markOrderShipped(

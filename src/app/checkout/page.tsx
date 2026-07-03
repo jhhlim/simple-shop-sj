@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useCart } from "@/components/CartProvider";
 import { CouponField } from "@/components/CouponField";
+import { PendingOrderBanner, savePendingOrder } from "@/components/PendingOrderBanner";
 import { ShippingForm } from "@/components/ShippingForm";
 import { ShippingNotice } from "@/components/ShippingNotice";
 import type { OrderTotals } from "@/lib/pricing";
@@ -125,10 +126,18 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items, shipping: validShipping, couponCode }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        url?: string;
+        orderId?: string;
+        expiresAt?: string;
+      };
       if (!res.ok) {
         setError(data.error || "Checkout failed");
         return;
+      }
+      if (data.orderId && data.expiresAt) {
+        savePendingOrder({ orderId: data.orderId, expiresAt: data.expiresAt });
       }
       if (data.url) {
         window.location.href = data.url;
@@ -160,6 +169,9 @@ export default function CheckoutPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-2xl font-semibold">Checkout</h1>
+      <div className="mt-4">
+        <PendingOrderBanner />
+      </div>
       {session?.user ? (
         <p className="mt-1 text-sm text-green-800">
           Signed in as <strong>{session.user.name || session.user.email}</strong> — your cart is

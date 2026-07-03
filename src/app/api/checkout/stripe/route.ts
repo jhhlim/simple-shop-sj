@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createOrder } from "@/lib/orders";
+import { auth } from "@/auth";
+import { createOrder, markOrderFailed, updateOrderPaymentRefs } from "@/lib/orders";
 import { stripeKeyProblem } from "@/lib/payments";
 import { buildCartPricing } from "@/lib/pricing";
+import { releaseStock, reserveStock } from "@/lib/products";
 import {
   formatShippingForStorage,
   validateShippingInfo,
@@ -10,12 +12,17 @@ import {
 import { STORAGE_ERROR_MESSAGE } from "@/lib/storage";
 import type { CartItem, ShippingInfo } from "@/lib/types";
 
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   const configError = stripeKeyProblem(stripeKey);
   if (configError) {
     return NextResponse.json({ error: configError }, { status: 503 });
   }
+
+  let reservedItems: { productId: string; quantity: number }[] | null = null;
+  let pendingOrderId: string | null = null;
 
   try {
     const body = await request.json();
@@ -25,6 +32,7 @@ export async function POST(request: Request) {
       couponCode?: string | null;
     };
 
+    const session = await auth();
     const shipping = formatShippingForStorage(rawShipping);
     const { valid, errors } = validateShippingInfo(shipping);
     if (!items?.length || !valid) {
@@ -42,6 +50,16 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    const reserveItems = lines.map(({ product, item }) => ({
+      productId: product.id,
+      quantity: item.quantity,
+    }));
+    const stockError = await reserveStock(reserveItems);
+    if (stockError) {
+      return NextResponse.json({ error: stockError }, { status: 409 });
+    }
+    reservedItems = reserveItems;
 
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = lines.map(
       ({ product, item }) => ({
@@ -61,17 +79,25 @@ export async function POST(request: Request) {
       quantity: item.quantity,
     }));
 
-    const order = await createOrder({
-      items: orderItems,
-      shipping,
-      subtotal: totals.subtotal,
-      shippingFee: totals.shippingFee,
-      discount: totals.discount,
-      discountPercent: totals.discountPercent,
-      couponCode: totals.couponCode || undefined,
-      total: totals.total,
-      paymentMethod: "stripe",
-    });
+    let order;
+    try {
+      order = await createOrder({
+        items: orderItems,
+        shipping,
+        subtotal: totals.subtotal,
+        shippingFee: totals.shippingFee,
+        discount: totals.discount,
+        discountPercent: totals.discountPercent,
+        couponCode: totals.couponCode || undefined,
+        total: totals.total,
+        paymentMethod: "stripe",
+        userId: session?.user?.id,
+      });
+    } catch (err) {
+      await releaseStock(reserveItems);
+      throw err;
+    }
+    pendingOrderId = order.id;
 
     lineItems.push({
       price_data: {
@@ -90,7 +116,7 @@ export async function POST(request: Request) {
       customer_email: shipping.email,
       line_items: lineItems,
       payment_method_types: ["card", "alipay"],
-      success_url: `${origin}/success?order=${order.id}`,
+      success_url: `${origin}/success?order=${order.id}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/checkout`,
       metadata: { orderId: order.id },
     };
@@ -105,10 +131,20 @@ export async function POST(request: Request) {
       sessionParams.discounts = [{ coupon: coupon.id }];
     }
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    const checkoutSession = await stripe.checkout.sessions.create(sessionParams);
+    await updateOrderPaymentRefs(order.id, { stripeSessionId: checkoutSession.id });
 
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({
+      url: checkoutSession.url,
+      orderId: order.id,
+      expiresAt: order.expiresAt,
+    });
   } catch (err) {
+    if (pendingOrderId) {
+      await markOrderFailed(pendingOrderId).catch(() => undefined);
+    } else if (reservedItems) {
+      await releaseStock(reservedItems).catch(() => undefined);
+    }
     const raw = err instanceof Error ? err.message : "Stripe checkout failed";
     const message =
       raw.includes("EROFS") || raw.includes("read-only file system")

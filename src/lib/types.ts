@@ -5,6 +5,11 @@ export type Product = {
   price: number;
   category: "jewelry" | "goods" | "other";
   imageUrl: string;
+  stock: number;
+  soldCount: number;
+  sku?: string;
+  importHandle?: string;
+  importToken?: string;
   createdAt: string;
 };
 
@@ -25,7 +30,7 @@ export type ShippingInfo = {
   country: string;
 };
 
-export type OrderStatus = "pending" | "paid" | "shipped" | "failed";
+export type OrderStatus = "pending" | "paid" | "shipped" | "failed" | "expired";
 
 export type TrackingStatus = "pre_transit" | "in_transit" | "delivered" | "unknown";
 
@@ -42,6 +47,10 @@ export type Order = {
   paymentMethod: "stripe" | "paypal" | "alipay";
   status: OrderStatus;
   createdAt: string;
+  expiresAt?: string;
+  userId?: string;
+  stripeSessionId?: string;
+  paypalOrderId?: string;
   paymentId?: string;
   trackingNumber?: string;
   trackingCarrier?: string;

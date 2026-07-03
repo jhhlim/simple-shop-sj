@@ -45,8 +45,33 @@ async function initSchema() {
       price NUMERIC(10, 2) NOT NULL,
       category TEXT NOT NULL,
       image_url TEXT NOT NULL DEFAULT '',
+      stock INTEGER NOT NULL DEFAULT 1,
+      sold_count INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `;
+
+  await sql`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS stock INTEGER NOT NULL DEFAULT 1
+  `;
+  await sql`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS sold_count INTEGER NOT NULL DEFAULT 0
+  `;
+  await sql`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS sku TEXT
+  `;
+  await sql`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS import_handle TEXT
+  `;
+  await sql`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS import_token TEXT
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS products_sku_idx ON products (lower(sku)) WHERE sku IS NOT NULL
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS products_import_handle_idx ON products (lower(import_handle))
+    WHERE import_handle IS NOT NULL
   `;
 
   await sql`
@@ -64,8 +89,40 @@ async function initSchema() {
       password_hash TEXT,
       name TEXT,
       google_id TEXT UNIQUE,
+      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL
     )
+  `;
+
+  await sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx
+    ON users (lower(username))
+    WHERE username IS NOT NULL
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx
+    ON users (lower(email))
+    WHERE email IS NOT NULL
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS auth_tokens_user_type_idx ON auth_tokens (user_id, type)
   `;
 
   await sql`
@@ -109,7 +166,7 @@ async function seedProductsIfEmpty(
     const products = JSON.parse(raw) as Product[];
     for (const product of products) {
       await sql`
-        INSERT INTO products (id, name, description, price, category, image_url, created_at)
+        INSERT INTO products (id, name, description, price, category, image_url, stock, sold_count, created_at)
         VALUES (
           ${product.id},
           ${product.name},
@@ -117,6 +174,8 @@ async function seedProductsIfEmpty(
           ${product.price},
           ${product.category},
           ${product.imageUrl},
+          ${product.stock ?? 1},
+          ${product.soldCount ?? 0},
           ${product.createdAt}
         )
         ON CONFLICT (id) DO NOTHING

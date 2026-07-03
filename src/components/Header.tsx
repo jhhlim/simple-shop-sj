@@ -23,9 +23,6 @@ export function Header({ cartCount = 0 }: { cartCount?: number }) {
             Contact
           </Link>
           <AuthNav />
-          <Link href="/admin" className="text-stone-400 hover:text-stone-700">
-            Admin
-          </Link>
         </nav>
       </div>
     </header>

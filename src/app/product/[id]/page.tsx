@@ -40,9 +40,14 @@ export default async function ProductPage({
             <p className="text-sm capitalize text-stone-500">{product.category}</p>
             <h1 className="text-3xl font-semibold">{product.name}</h1>
             <p className="mt-2 text-2xl font-semibold">${product.price.toFixed(2)}</p>
+            <p className="mt-1 text-sm text-stone-500">
+              {product.stock <= 0
+                ? `Sold out${product.soldCount > 0 ? ` · ${product.soldCount} sold` : ""}`
+                : `${product.stock} in stock${product.soldCount > 0 ? ` · ${product.soldCount} sold` : ""}`}
+            </p>
           </div>
           <p className="text-stone-600">{product.description}</p>
-          <AddToCartButton productId={product.id} />
+          <AddToCartButton productId={product.id} stock={product.stock} />
           <ShippingNotice compact />
         </div>
       </div>

@@ -1,14 +1,38 @@
 import { NextResponse } from "next/server";
-import { deleteProduct } from "@/lib/products";
+import { requireAdmin } from "@/lib/admin-auth";
+import { deleteProduct, updateProduct } from "@/lib/products";
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
+  const { id } = await params;
+  const body = await request.json();
+
+  const updated = await updateProduct(id, {
+    name: body.name != null ? String(body.name) : undefined,
+    description: body.description != null ? String(body.description) : undefined,
+    price: body.price != null ? Number(body.price) : undefined,
+    category: body.category,
+    imageUrl: body.imageUrl != null ? String(body.imageUrl) : undefined,
+    stock: body.stock != null ? Number(body.stock) : undefined,
+  });
+
+  if (!updated) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  return NextResponse.json(updated);
+}
 
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const password = request.headers.get("x-admin-password");
-  if (!password || password !== process.env.ADMIN_PASSWORD) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireAdmin(request);
+  if (denied) return denied;
 
   const { id } = await params;
   const ok = await deleteProduct(id);

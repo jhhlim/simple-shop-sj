@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-auth";
 import { createProduct, getProducts } from "@/lib/products";
 
 export async function GET() {
@@ -7,13 +8,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const password = request.headers.get("x-admin-password");
-  if (!password || password !== process.env.ADMIN_PASSWORD) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireAdmin(request);
+  if (denied) return denied;
 
   const body = await request.json();
-  const { name, description, price, category, imageUrl } = body;
+  const { name, description, price, category, imageUrl, stock } = body;
 
   if (!name || !description || price == null || !category) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -25,6 +24,7 @@ export async function POST(request: Request) {
     price: Number(price),
     category,
     imageUrl: imageUrl ? String(imageUrl) : "",
+    stock: stock != null ? Number(stock) : 1,
   });
 
   return NextResponse.json(product, { status: 201 });

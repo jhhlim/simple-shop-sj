@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-auth";
 import { getOrders, ordersNeedingShipment } from "@/lib/orders";
 import { ordersToPirateShipCsv } from "@/lib/pirateship-export";
 
 export async function GET(request: Request) {
-  const password = request.headers.get("x-admin-password");
-  if (!password || password !== process.env.ADMIN_PASSWORD) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireAdmin(request);
+  if (denied) return denied;
 
   const { searchParams } = new URL(request.url);
   const onlyUnshipped = searchParams.get("unshipped") === "1";

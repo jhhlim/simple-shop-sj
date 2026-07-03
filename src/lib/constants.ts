@@ -1,5 +1,6 @@
 export const SHIPPING_FEE = 5;
 export const SHOP_NAME = "LIMWARE";
+export const PENDING_ORDER_MINUTES = 15;
 export const SHIPPING_LABEL_NOTE =
   "We pack your order carefully and ship it to the address you provided. You'll receive an email with tracking once your package ships.";
 

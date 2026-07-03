@@ -41,7 +41,7 @@ export default function RegisterPage() {
     }
 
     const signInRes = await signIn("credentials", {
-      login: username,
+      login: username.trim().toLowerCase(),
       password,
       redirect: false,
     });
@@ -51,7 +51,8 @@ export default function RegisterPage() {
       setError("Account created — please sign in.");
       return;
     }
-    window.location.href = "/";
+    const welcomeQuery = data.emailSent ? "?welcome=1" : "";
+    window.location.href = `/account${welcomeQuery}`;
   }
 
   return (

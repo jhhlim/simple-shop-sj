@@ -7,6 +7,7 @@ import { useCart } from "./CartProvider";
 
 export function ProductCard({ product }: { product: Product }) {
   const { addItem } = useCart();
+  const soldOut = product.stock <= 0;
 
   return (
     <article className="flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
@@ -24,6 +25,11 @@ export function ProductCard({ product }: { product: Product }) {
             No image
           </div>
         )}
+        {soldOut && (
+          <span className="absolute left-2 top-2 rounded-full bg-stone-900 px-2 py-1 text-xs font-medium text-white">
+            Sold out
+          </span>
+        )}
       </div>
       <div className="flex flex-1 flex-col gap-2 p-4">
         <div className="flex items-start justify-between gap-2">
@@ -33,16 +39,22 @@ export function ProductCard({ product }: { product: Product }) {
           </span>
         </div>
         <p className="line-clamp-2 text-sm text-stone-600">{product.description}</p>
+        <p className="text-xs text-stone-500">
+          {soldOut
+            ? `${product.soldCount} sold`
+            : `${product.stock} in stock${product.soldCount > 0 ? ` · ${product.soldCount} sold` : ""}`}
+        </p>
         <div className="mt-auto flex items-center justify-between pt-2">
           <span className="text-lg font-semibold text-stone-900">
             ${product.price.toFixed(2)}
           </span>
           <button
             type="button"
+            disabled={soldOut}
             onClick={() => addItem(product.id)}
-            className="rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700"
+            className="rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Add to cart
+            {soldOut ? "Sold out" : "Add to cart"}
           </button>
         </div>
         <Link

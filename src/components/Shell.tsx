@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Header } from "@/components/Header";
 import { CookieConsent } from "@/components/CookieConsent";
 import { useCart } from "@/components/CartProvider";
+import { openCookieSettings } from "@/lib/cookie-consent";
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { totalItems } = useCart();
@@ -29,6 +30,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <a href="/contact" className="underline hover:text-stone-800">
             Customer support
           </a>
+          <span aria-hidden>·</span>
+          <button
+            type="button"
+            onClick={openCookieSettings}
+            className="underline hover:text-stone-800"
+          >
+            Cookie settings
+          </button>
         </p>
       </footer>
       <CookieConsent />

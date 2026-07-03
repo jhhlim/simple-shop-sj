@@ -2,6 +2,7 @@ import { Resend } from "resend";
 import { SHOP_NAME } from "./constants";
 import { getPublicSiteUrl, isResendTestSender, RESEND_DOMAIN_HELP } from "./site-url";
 import type { Order } from "./types";
+import type { DbUser } from "./users";
 
 export function emailConfigured(): boolean {
   return !!(process.env.RESEND_API_KEY && process.env.SHOP_EMAIL_FROM);
@@ -154,6 +155,105 @@ export async function sendDeliveredEmail(
         <p style="color: #666; font-size: 13px;">Thanks for shopping with ${SHOP_NAME}!</p>
       </div>
     `,
+  });
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+function authEmailShell(title: string, body: string): string {
+  return `
+    <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
+      <h2>${title}</h2>
+      ${body}
+      <p style="color: #666; font-size: 13px; margin-top: 24px;">
+        — The ${SHOP_NAME} team
+      </p>
+    </div>
+  `;
+}
+
+export async function sendWelcomeEmail(
+  user: DbUser,
+  verifyToken: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!emailConfigured()) {
+    return { ok: false, error: "Email not configured" };
+  }
+  if (!user.email) {
+    return { ok: false, error: "User has no email address" };
+  }
+
+  const origin = getPublicSiteUrl();
+  const verifyUrl = `${origin}/api/auth/verify-email?token=${encodeURIComponent(verifyToken)}`;
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const displayName = user.name || user.username || "there";
+
+  const { error } = await resend.emails.send({
+    from: process.env.SHOP_EMAIL_FROM!,
+    to: user.email,
+    subject: `Welcome to ${SHOP_NAME} — please confirm your email`,
+    html: authEmailShell(
+      `Welcome to ${SHOP_NAME}!`,
+      `
+        <p>Hi ${displayName},</p>
+        <p>Thanks for creating an account. We're glad you're here.</p>
+        <p>Please confirm your email address so we can reach you about orders and account updates:</p>
+        <p style="margin: 24px 0;">
+          <a href="${verifyUrl}" style="display: inline-block; background: #1c1917; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+            Confirm email address
+          </a>
+        </p>
+        <p style="font-size: 13px; color: #666;">
+          Or copy this link: <a href="${verifyUrl}">${verifyUrl}</a>
+        </p>
+        <p style="font-size: 13px; color: #666;">This link expires in 24 hours.</p>
+      `
+    ),
+  });
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export async function sendPasswordResetEmail(
+  user: DbUser,
+  resetToken: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!emailConfigured()) {
+    return { ok: false, error: "Email not configured" };
+  }
+  if (!user.email) {
+    return { ok: false, error: "User has no email address" };
+  }
+
+  const origin = getPublicSiteUrl();
+  const resetUrl = `${origin}/reset-password?token=${encodeURIComponent(resetToken)}`;
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const displayName = user.name || user.username || "there";
+
+  const { error } = await resend.emails.send({
+    from: process.env.SHOP_EMAIL_FROM!,
+    to: user.email,
+    subject: `Reset your ${SHOP_NAME} password`,
+    html: authEmailShell(
+      "Reset your password",
+      `
+        <p>Hi ${displayName},</p>
+        <p>We received a request to reset your password. Click below to choose a new one:</p>
+        <p style="margin: 24px 0;">
+          <a href="${resetUrl}" style="display: inline-block; background: #1c1917; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+            Reset password
+          </a>
+        </p>
+        <p style="font-size: 13px; color: #666;">
+          Or copy this link: <a href="${resetUrl}">${resetUrl}</a>
+        </p>
+        <p style="font-size: 13px; color: #666;">
+          If you didn't request this, you can ignore this email. The link expires in 1 hour.
+        </p>
+      `
+    ),
   });
 
   if (error) return { ok: false, error: error.message };

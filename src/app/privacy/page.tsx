@@ -56,11 +56,23 @@ export default function PrivacyPolicyPage() {
 
       <h2>3. Cookies and similar technologies</h2>
       <p>
-        We use essential cookies and local storage to remember your shopping cart, coupon selection,
-        cookie consent preference, and sign-in session. These are necessary for core site
-        functionality. By clicking &quot;Accept&quot; on our cookie notice or continuing to use the
-        site, you consent to this use as described here.
+        We use cookies and local storage in the following categories. You can choose your
+        preferences using our cookie banner or the &quot;Cookie settings&quot; link in the footer.
       </p>
+      <ul>
+        <li>
+          <strong>Strictly necessary:</strong> sign-in sessions, shopping cart, checkout, security,
+          and storing your cookie choices. These cannot be turned off.
+        </li>
+        <li>
+          <strong>Functional:</strong> optional preferences such as remembering an applied coupon
+          code.
+        </li>
+        <li>
+          <strong>Analytics and marketing:</strong> not currently used on this site. If we add them
+          in the future, we will ask for your consent first.
+        </li>
+      </ul>
       <p>
         We do not use cookies for third-party advertising or cross-site tracking on this shop.
       </p>

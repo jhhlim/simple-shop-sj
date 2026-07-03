@@ -45,6 +45,16 @@ export async function buildCartPricing(
         error: `Product not found: ${item.productId}`,
       };
     }
+    if (product.stock < item.quantity) {
+      return {
+        lines: [],
+        totals: emptyTotals(),
+        error:
+          product.stock <= 0
+            ? `"${product.name}" is sold out`
+            : `"${product.name}" only has ${product.stock} available`,
+      };
+    }
     const lineTotal = product.price * item.quantity;
     subtotal += lineTotal;
     lines.push({ item, product, lineTotal });
