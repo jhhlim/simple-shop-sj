@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAdminGate } from "@/components/AdminAuth";
-import { prepareImageForUpload } from "@/lib/heic-client";
+import { compressImageForUpload } from "@/lib/compress-image";
 
 type PreviewData = {
   format: string;
@@ -96,6 +96,13 @@ async function uploadPhotoBatch(batch: File[]): Promise<PhotoResult & { error?: 
       signal: controller.signal,
     });
     const raw = await res.text();
+    if (res.status === 413 || /FUNCTION_PAYLOAD_TOO_LARGE|Request Entity Too Large/i.test(raw)) {
+      return {
+        ...emptyPhotoResult(),
+        error: "Photo still too large after compression",
+      };
+    }
+
     let data: PhotoResult & { error?: string };
     try {
       data = JSON.parse(raw) as PhotoResult & { error?: string };
@@ -225,10 +232,10 @@ export default function AdminImportPage() {
 
       let uploadBatch: File[];
       try {
-        uploadBatch = await Promise.all(batch.map((f) => prepareImageForUpload(f)));
+        uploadBatch = await Promise.all(batch.map((f) => compressImageForUpload(f)));
       } catch (err) {
         combined.errors.push(
-          `${file.name}: ${err instanceof Error ? err.message : "Could not convert HEIC photo. Try exporting as JPG."}`
+          `${file.name}: ${err instanceof Error ? err.message : "Could not prepare photo. Try exporting as JPG."}`
         );
         if (batchIndex < chunks.length - 1) await sleep(PHOTO_GAP_MS);
         continue;

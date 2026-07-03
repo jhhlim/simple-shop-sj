@@ -17,7 +17,9 @@ export async function POST(request: Request) {
     }
     if (!isImageUpload(upload)) {
       return NextResponse.json(
-        { error: `File must be an image (got type="${upload.type || "unknown"}", name="${upload.name}")` },
+        {
+          error: `File must be an image (got type="${upload.type || "unknown"}", name="${upload.name}")`,
+        },
         { status: 400 }
       );
     }

@@ -13,7 +13,7 @@ import {
   getConditionLabel,
   getProductCondition,
 } from "@/lib/product-condition";
-import { prepareImageForUpload } from "@/lib/heic-client";
+import { compressImageForUpload, isHeicFile } from "@/lib/compress-image";
 import { isPublicImageUrl } from "@/lib/image-url";
 import type { Product, ProductCategory, ProductCondition } from "@/lib/types";
 
@@ -110,17 +110,21 @@ function AdminThumb({ src, alt }: { src: string; alt: string }) {
 
 function PhotoFieldStatus({
   uploading,
+  converting,
   error,
   fileName,
 }: {
   uploading: boolean;
+  converting: boolean;
   error: string;
   fileName: string;
 }) {
   if (uploading) {
     return (
       <p className="mt-1 text-xs font-medium text-stone-600">
-        Uploading{fileName ? ` “${fileName}”` : ""}…
+        {converting
+          ? `Converting HEIC${fileName ? ` “${fileName}”` : ""}…`
+          : `Uploading${fileName ? ` “${fileName}”` : ""}…`}
       </p>
     );
   }
@@ -146,6 +150,10 @@ export default function AdminPage() {
   const [photoFileName, setPhotoFileName] = useState<{ create: string; edit: string }>({
     create: "",
     edit: "",
+  });
+  const [photoIsHeic, setPhotoIsHeic] = useState<{ create: boolean; edit: boolean }>({
+    create: false,
+    edit: false,
   });
   const [describing, setDescribing] = useState<"create" | "edit" | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -193,18 +201,21 @@ export default function AdminPage() {
   }, [ready]);
 
   async function handleUpload(file: File, target: "create" | "edit") {
+    const wasHeic = isHeicFile(file);
     setUploading(target);
     setMessage("");
     setPhotoError((prev) => ({ ...prev, [target]: "" }));
     setPhotoFileName((prev) => ({ ...prev, [target]: file.name }));
+    setPhotoIsHeic((prev) => ({ ...prev, [target]: wasHeic }));
     // Always show a local preview immediately — do not wait for upload.
     setLocalPreview(target, file);
 
     try {
-      // HEIC only: convert to JPEG. JPG/PNG/WebP pass through unchanged.
-      let uploadFile: File = file;
+      // Resize + JPEG-encode client-side so phone photos stay under Vercel body limits.
+      // HEIC: Safari can decode via createImageBitmap/canvas; other browsers get a clear export hint.
+      let uploadFile: File;
       try {
-        uploadFile = await prepareImageForUpload(file);
+        uploadFile = await compressImageForUpload(file);
       } catch (prepErr) {
         throw new Error(
           prepErr instanceof Error
@@ -212,21 +223,38 @@ export default function AdminPage() {
             : "Could not prepare photo for upload"
         );
       }
-      if (uploadFile !== file) {
-        setLocalPreview(target, uploadFile);
-      }
+      // Preview the compressed JPEG (works even when the original was HEIC).
+      setLocalPreview(target, uploadFile);
 
       const body = new FormData();
       // Two-arg append preserves File name + type (image/jpeg, etc.).
       body.append("file", uploadFile);
 
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body,
-        credentials: "same-origin",
-      });
+      let res: Response;
+      try {
+        res = await fetch("/api/upload", {
+          method: "POST",
+          body,
+          credentials: "same-origin",
+        });
+      } catch (networkErr) {
+        const detail =
+          networkErr instanceof Error ? networkErr.message : "network error";
+        throw new Error(
+          `Upload request failed (${detail}). Check your connection and try again.`
+        );
+      }
 
       const raw = await res.text();
+      if (
+        res.status === 413 ||
+        /FUNCTION_PAYLOAD_TOO_LARGE|Request Entity Too Large/i.test(raw)
+      ) {
+        throw new Error(
+          "Photo still too large after compression. Try a smaller photo or export as JPEG."
+        );
+      }
+
       let data: { url?: string; error?: string } = {};
       try {
         data = raw ? (JSON.parse(raw) as { url?: string; error?: string }) : {};
@@ -249,19 +277,20 @@ export default function AdminPage() {
         );
       }
 
+      // Durable public URL for Save (replaces temporary blob: preview).
       revokePreview(target);
       if (target === "create") {
         setForm((f) => ({ ...f, imageUrl: url }));
       } else {
         setEditForm((f) => ({ ...f, imageUrl: url }));
       }
-      setMessage("Image uploaded.");
+      setMessage(wasHeic ? "HEIC converted and uploaded." : "Image uploaded.");
       setPhotoError((prev) => ({ ...prev, [target]: "" }));
     } catch (err) {
       const errorText = err instanceof Error ? err.message : "Upload failed";
       setPhotoError((prev) => ({ ...prev, [target]: errorText }));
       setMessage(errorText);
-      // Keep local blob: preview so the user still sees what they picked.
+      // Keep local preview so the user still sees what they picked (JPEG preview after compress).
     } finally {
       setUploading(null);
     }
@@ -358,6 +387,7 @@ export default function AdminPage() {
     revokePreview("create");
     setForm(emptyForm);
     setPhotoFileName((prev) => ({ ...prev, create: "" }));
+    setPhotoIsHeic((prev) => ({ ...prev, create: false }));
     setPhotoError((prev) => ({ ...prev, create: "" }));
     setMessage("Product added.");
     await loadProducts();
@@ -368,6 +398,7 @@ export default function AdminPage() {
     setEditingId(product.id);
     setPhotoError((prev) => ({ ...prev, edit: "" }));
     setPhotoFileName((prev) => ({ ...prev, edit: "" }));
+    setPhotoIsHeic((prev) => ({ ...prev, edit: false }));
     setEditForm({
       name: product.name,
       description: product.description,
@@ -409,6 +440,7 @@ export default function AdminPage() {
     revokePreview("edit");
     setEditingId(null);
     setPhotoFileName((prev) => ({ ...prev, edit: "" }));
+    setPhotoIsHeic((prev) => ({ ...prev, edit: false }));
     setPhotoError((prev) => ({ ...prev, edit: "" }));
     setMessage("Product updated.");
     await loadProducts();
@@ -569,6 +601,7 @@ export default function AdminPage() {
             </label>
             <PhotoFieldStatus
               uploading={createBusy}
+              converting={createBusy && photoIsHeic.create}
               error={photoError.create}
               fileName={photoFileName.create}
             />
@@ -686,6 +719,7 @@ export default function AdminPage() {
                   </label>
                   <PhotoFieldStatus
                     uploading={editBusy}
+                    converting={editBusy && photoIsHeic.edit}
                     error={photoError.edit}
                     fileName={photoFileName.edit}
                   />
@@ -721,6 +755,7 @@ export default function AdminPage() {
                       setEditingId(null);
                       setPhotoError((prev) => ({ ...prev, edit: "" }));
                       setPhotoFileName((prev) => ({ ...prev, edit: "" }));
+                      setPhotoIsHeic((prev) => ({ ...prev, edit: false }));
                     }}
                     className="text-sm underline"
                   >
