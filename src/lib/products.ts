@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
+import { normalizeStoredImageUrl } from "./image-url";
 import { ensureSchema, asRows, getSql, isPostgresEnabled } from "./pg";
 import { normalizeProductCategory } from "./product-categories";
 import { normalizeProductCondition } from "./product-condition";
@@ -132,7 +133,7 @@ export async function createProduct(
     description: input.description,
     price: input.price,
     category: normalizeProductCategory(input.category),
-    imageUrl: input.imageUrl || "",
+    imageUrl: normalizeStoredImageUrl(input.imageUrl),
     stock: Math.max(0, Math.floor(input.stock ?? 1)),
     soldCount: input.soldCount ?? 0,
     sku: input.sku,
@@ -209,6 +210,10 @@ export async function updateProduct(
       input.category != null
         ? normalizeProductCategory(input.category)
         : existing.category,
+    imageUrl:
+      input.imageUrl != null
+        ? normalizeStoredImageUrl(input.imageUrl)
+        : existing.imageUrl,
     stock: input.stock != null ? Math.max(0, Math.floor(input.stock)) : existing.stock,
   };
   if (nextCondition) updated.condition = nextCondition;

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAdminGate } from "@/components/AdminAuth";
+import { prepareImageForUpload } from "@/lib/heic-client";
 
 type PreviewData = {
   format: string;
@@ -50,6 +51,7 @@ const PHOTO_FETCH_TIMEOUT_MS = 120_000;
 const PHOTO_MAX_RETRIES = 4;
 const PHOTO_RETRY_BASE_MS = 1_500;
 const PHOTO_GAP_MS = 350;
+const PHOTO_ACCEPT = "image/*,.heic,.heif,image/heic,image/heif";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -221,7 +223,18 @@ export default function AdminImportPage() {
       const file = batch[0]!;
       setPhotoProgress(`Uploading ${file.name} (${batchIndex + 1} of ${list.length})…`);
 
-      const data = await uploadPhotoWithRetry(batch);
+      let uploadBatch: File[];
+      try {
+        uploadBatch = await Promise.all(batch.map((f) => prepareImageForUpload(f)));
+      } catch (err) {
+        combined.errors.push(
+          `${file.name}: ${err instanceof Error ? err.message : "Could not convert HEIC photo. Try exporting as JPG."}`
+        );
+        if (batchIndex < chunks.length - 1) await sleep(PHOTO_GAP_MS);
+        continue;
+      }
+
+      const data = await uploadPhotoWithRetry(uploadBatch);
 
       if (!data.error) {
         mergePhotoResults(combined, data);
@@ -402,7 +415,7 @@ export default function AdminImportPage() {
         </p>
         <input
           type="file"
-          accept="image/*"
+          accept={PHOTO_ACCEPT}
           multiple
           disabled={loading === "photos"}
           onChange={(e) => {

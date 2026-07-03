@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { normalizeStoredImageUrl } from "@/lib/image-url";
 import { isProductCategory } from "@/lib/product-categories";
 import { isProductCondition } from "@/lib/product-condition";
 import { deleteProduct, updateProduct } from "@/lib/products";
@@ -41,7 +42,7 @@ export async function PATCH(
   if (body.price != null) patch.price = Number(body.price);
   if (body.category != null) patch.category = body.category;
   if (isProductCondition(body.condition)) patch.condition = body.condition;
-  if (body.imageUrl != null) patch.imageUrl = String(body.imageUrl);
+  if (body.imageUrl != null) patch.imageUrl = normalizeStoredImageUrl(body.imageUrl);
   if (body.stock != null) patch.stock = Number(body.stock);
   if (body.sku != null) patch.sku = String(body.sku);
 

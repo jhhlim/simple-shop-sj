@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { normalizeStoredImageUrl } from "@/lib/image-url";
 import { isProductCategory } from "@/lib/product-categories";
 import { isProductCondition } from "@/lib/product-condition";
 import { createProduct, getProducts } from "@/lib/products";
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
     price: Number(price),
     category,
     condition: isProductCondition(condition) ? condition : undefined,
-    imageUrl: imageUrl ? String(imageUrl) : "",
+    imageUrl: normalizeStoredImageUrl(imageUrl),
     stock: stock != null ? Number(stock) : 1,
     sku: skuValue,
   });

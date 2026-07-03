@@ -6,16 +6,22 @@ export async function POST(request: Request) {
   const denied = await requireAdmin();
   if (denied) return denied;
 
-  const formData = await request.formData();
-  const file = formData.get("file");
+  try {
+    const formData = await request.formData();
+    const file = formData.get("file");
 
-  if (!file || !(file instanceof File)) {
-    return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
-  }
-  if (!isImageFile(file)) {
-    return NextResponse.json({ error: "File must be an image" }, { status: 400 });
-  }
+    if (!file || !(file instanceof File)) {
+      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+    }
+    if (!isImageFile(file)) {
+      return NextResponse.json({ error: "File must be an image" }, { status: 400 });
+    }
 
-  const url = await saveUploadedImage(file);
-  return NextResponse.json({ url });
+    const url = await saveUploadedImage(file);
+    return NextResponse.json({ url });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Upload failed";
+    const status = message.includes("HEIC") || message.includes("not configured") ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
+  }
 }

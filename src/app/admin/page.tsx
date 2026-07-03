@@ -13,6 +13,8 @@ import {
   getConditionLabel,
   getProductCondition,
 } from "@/lib/product-condition";
+import { prepareImageForUpload } from "@/lib/heic-client";
+import { isPublicImageUrl } from "@/lib/image-url";
 import type { Product, ProductCategory, ProductCondition } from "@/lib/types";
 
 type ListingForm = {
@@ -37,17 +39,32 @@ const emptyForm: ListingForm = {
   sku: "",
 };
 
+const PHOTO_ACCEPT = "image/*,.heic,.heif,image/heic,image/heif";
+
+/**
+ * Preview only public http(s) URLs, or local /uploads/ paths from dev storage.
+ * Empty, relative-on-Vercel, and unloadable (e.g. HEIC mislabeled as JPEG) show "No photo".
+ */
+function canPreviewImageUrl(src: string): boolean {
+  const value = src.trim();
+  if (!value) return false;
+  if (isPublicImageUrl(value)) return true;
+  // /uploads/ only exists on local disk — never durable on Vercel.
+  return value.startsWith("/uploads/") && process.env.NODE_ENV !== "production";
+}
+
 function AdminImagePreview({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false);
+  const displayable = canPreviewImageUrl(src);
 
   useEffect(() => {
     setFailed(false);
   }, [src]);
 
-  if (!src.trim() || failed) {
+  if (!displayable || failed) {
     return (
       <div className="flex h-32 w-32 items-center justify-center rounded-lg border border-dashed border-stone-300 bg-stone-50 px-2 text-center text-xs text-stone-500">
-        {failed ? "Photo failed to load" : "No photo"}
+        No photo
       </div>
     );
   }
@@ -65,12 +82,13 @@ function AdminImagePreview({ src, alt }: { src: string; alt: string }) {
 
 function AdminThumb({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false);
+  const displayable = canPreviewImageUrl(src);
 
   useEffect(() => {
     setFailed(false);
   }, [src]);
 
-  if (!src.trim() || failed) {
+  if (!displayable || failed) {
     return (
       <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-stone-300 bg-stone-50 px-1 text-center text-[10px] font-medium uppercase tracking-wide text-stone-400">
         No photo
@@ -114,13 +132,18 @@ export default function AdminPage() {
     setUploading(true);
     setMessage("");
     try {
+      const uploadFile = await prepareImageForUpload(file);
       const body = new FormData();
-      body.append("file", file);
+      body.append("file", uploadFile);
       const res = await fetch("/api/upload", { method: "POST", body });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      if (target === "create") setForm((f) => ({ ...f, imageUrl: data.url }));
-      else setEditForm((f) => ({ ...f, imageUrl: data.url }));
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      const url = typeof data.url === "string" ? data.url : "";
+      if (!isPublicImageUrl(url) && !url.startsWith("/uploads/")) {
+        throw new Error("Upload did not return a usable image URL");
+      }
+      if (target === "create") setForm((f) => ({ ...f, imageUrl: url }));
+      else setEditForm((f) => ({ ...f, imageUrl: url }));
       setMessage("Image uploaded.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Upload failed");
@@ -376,7 +399,7 @@ export default function AdminPage() {
             Photo
             <input
               type="file"
-              accept="image/*"
+              accept={PHOTO_ACCEPT}
               disabled={uploading}
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -484,7 +507,7 @@ export default function AdminPage() {
                   Photo
                   <input
                     type="file"
-                    accept="image/*"
+                    accept={PHOTO_ACCEPT}
                     disabled={uploading}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
