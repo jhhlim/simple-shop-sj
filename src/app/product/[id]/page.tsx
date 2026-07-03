@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AddToCartButton } from "./AddToCartButton";
 import { ShippingNotice } from "@/components/ShippingNotice";
+import { getCategoryLabel } from "@/lib/product-categories";
+import { getConditionLabel, getProductCondition } from "@/lib/product-condition";
 import { getProduct } from "@/lib/products";
 
 export default async function ProductPage({
@@ -37,7 +39,10 @@ export default async function ProductPage({
         </div>
         <div className="space-y-4">
           <div>
-            <p className="text-sm capitalize text-stone-500">{product.category}</p>
+            <p className="text-sm text-stone-500">
+              {getCategoryLabel(product.category)} ·{" "}
+              {getConditionLabel(getProductCondition(product))}
+            </p>
             <h1 className="text-3xl font-semibold">{product.name}</h1>
             <p className="mt-2 text-2xl font-semibold">${product.price.toFixed(2)}</p>
             <p className="mt-1 text-sm text-stone-500">

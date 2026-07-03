@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { isProductCategory } from "@/lib/product-categories";
+import { isProductCondition } from "@/lib/product-condition";
 import { deleteProduct, updateProduct } from "@/lib/products";
+import type { Product } from "@/lib/types";
 
 export async function PATCH(
   request: Request,
@@ -12,14 +15,37 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  const updated = await updateProduct(id, {
-    name: body.name != null ? String(body.name) : undefined,
-    description: body.description != null ? String(body.description) : undefined,
-    price: body.price != null ? Number(body.price) : undefined,
-    category: body.category,
-    imageUrl: body.imageUrl != null ? String(body.imageUrl) : undefined,
-    stock: body.stock != null ? Number(body.stock) : undefined,
-  });
+  if (body.category != null && !isProductCategory(body.category)) {
+    return NextResponse.json({ error: "Invalid category" }, { status: 400 });
+  }
+  if (body.condition != null && body.condition !== "" && !isProductCondition(body.condition)) {
+    return NextResponse.json({ error: "Invalid condition" }, { status: 400 });
+  }
+
+  const patch: Partial<
+    Pick<
+      Product,
+      | "name"
+      | "description"
+      | "price"
+      | "category"
+      | "condition"
+      | "imageUrl"
+      | "stock"
+      | "sku"
+    >
+  > = {};
+
+  if (body.name != null) patch.name = String(body.name);
+  if (body.description != null) patch.description = String(body.description);
+  if (body.price != null) patch.price = Number(body.price);
+  if (body.category != null) patch.category = body.category;
+  if (isProductCondition(body.condition)) patch.condition = body.condition;
+  if (body.imageUrl != null) patch.imageUrl = String(body.imageUrl);
+  if (body.stock != null) patch.stock = Number(body.stock);
+  if (body.sku != null) patch.sku = String(body.sku);
+
+  const updated = await updateProduct(id, patch);
 
   if (!updated) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });

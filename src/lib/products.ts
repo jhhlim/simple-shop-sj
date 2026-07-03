@@ -2,6 +2,8 @@ import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import { ensureSchema, asRows, getSql, isPostgresEnabled } from "./pg";
+import { normalizeProductCategory } from "./product-categories";
+import { normalizeProductCondition } from "./product-condition";
 import { assertCanPersistData } from "./storage";
 import type { Product } from "./types";
 
@@ -29,12 +31,14 @@ async function writeProductsFile(products: Product[]) {
 }
 
 function normalizeProduct(row: Partial<Product> & { imageUrl?: string }): Product {
+  const condition = normalizeProductCondition(row.condition);
   return {
     id: String(row.id),
     name: String(row.name || ""),
     description: String(row.description || ""),
     price: Number(row.price || 0),
-    category: (row.category as Product["category"]) || "goods",
+    category: normalizeProductCategory(row.category),
+    ...(condition ? { condition } : {}),
     imageUrl: String(row.imageUrl || ""),
     stock: Number(row.stock ?? 1),
     soldCount: Number(row.soldCount ?? 0),
@@ -51,6 +55,7 @@ function rowToProduct(row: {
   description: string;
   price: string | number;
   category: string;
+  condition?: string | null;
   image_url: string;
   stock?: number | string;
   sold_count?: number | string;
@@ -59,13 +64,15 @@ function rowToProduct(row: {
   import_token?: string | null;
   created_at: string | Date;
 }): Product {
+  const condition = normalizeProductCondition(row.condition);
   return {
     id: row.id,
     name: row.name,
     description: row.description,
     price: Number(row.price),
-    category: row.category as Product["category"],
-    imageUrl: row.image_url,
+    category: normalizeProductCategory(row.category),
+    ...(condition ? { condition } : {}),
+    imageUrl: row.image_url || "",
     stock: Number(row.stock ?? 1),
     soldCount: Number(row.sold_count ?? 0),
     sku: row.sku || undefined,
@@ -81,7 +88,7 @@ export async function getProducts(): Promise<Product[]> {
     await ensureSchema();
     const rows = asRows<Parameters<typeof rowToProduct>[0]>(
       await getSql()`
-      SELECT id, name, description, price, category, image_url, stock, sold_count,
+      SELECT id, name, description, price, category, condition, image_url, stock, sold_count,
              sku, import_handle, import_token, created_at
       FROM products
       ORDER BY created_at DESC
@@ -101,7 +108,7 @@ export async function getProduct(id: string): Promise<Product | undefined> {
     await ensureSchema();
     const rows = asRows<Parameters<typeof rowToProduct>[0]>(
       await getSql()`
-      SELECT id, name, description, price, category, image_url, stock, sold_count,
+      SELECT id, name, description, price, category, condition, image_url, stock, sold_count,
              sku, import_handle, import_token, created_at
       FROM products
       WHERE id = ${id}
@@ -119,19 +126,28 @@ export async function getProduct(id: string): Promise<Product | undefined> {
 export async function createProduct(
   input: Omit<Product, "id" | "createdAt" | "soldCount"> & { soldCount?: number }
 ): Promise<Product> {
+  const condition = normalizeProductCondition(input.condition);
   const product: Product = {
-    ...input,
+    name: input.name,
+    description: input.description,
+    price: input.price,
+    category: normalizeProductCategory(input.category),
+    imageUrl: input.imageUrl || "",
     stock: Math.max(0, Math.floor(input.stock ?? 1)),
     soldCount: input.soldCount ?? 0,
+    sku: input.sku,
+    importHandle: input.importHandle,
+    importToken: input.importToken,
     id: randomUUID(),
     createdAt: new Date().toISOString(),
   };
+  if (condition) product.condition = condition;
 
   if (isPostgresEnabled()) {
     await ensureSchema();
     await getSql()`
       INSERT INTO products (
-        id, name, description, price, category, image_url, stock, sold_count,
+        id, name, description, price, category, condition, image_url, stock, sold_count,
         sku, import_handle, import_token, created_at
       )
       VALUES (
@@ -140,6 +156,7 @@ export async function createProduct(
         ${product.description},
         ${product.price},
         ${product.category},
+        ${product.condition ?? null},
         ${product.imageUrl},
         ${product.stock},
         ${product.soldCount},
@@ -169,6 +186,7 @@ export async function updateProduct(
       | "description"
       | "price"
       | "category"
+      | "condition"
       | "imageUrl"
       | "stock"
       | "sku"
@@ -180,11 +198,21 @@ export async function updateProduct(
   const existing = await getProduct(id);
   if (!existing) return null;
 
+  const nextCondition =
+    "condition" in input
+      ? normalizeProductCondition(input.condition)
+      : existing.condition;
   const updated: Product = {
     ...existing,
     ...input,
+    category:
+      input.category != null
+        ? normalizeProductCategory(input.category)
+        : existing.category,
     stock: input.stock != null ? Math.max(0, Math.floor(input.stock)) : existing.stock,
   };
+  if (nextCondition) updated.condition = nextCondition;
+  else delete updated.condition;
 
   if (isPostgresEnabled()) {
     await ensureSchema();
@@ -195,6 +223,7 @@ export async function updateProduct(
         description = ${updated.description},
         price = ${updated.price},
         category = ${updated.category},
+        condition = ${updated.condition ?? null},
         image_url = ${updated.imageUrl},
         stock = ${updated.stock},
         sku = ${updated.sku ?? null},
@@ -327,7 +356,7 @@ export async function findProductBySku(sku: string): Promise<Product | undefined
     await ensureSchema();
     const rows = asRows<Parameters<typeof rowToProduct>[0]>(
       await getSql()`
-        SELECT id, name, description, price, category, image_url, stock, sold_count,
+        SELECT id, name, description, price, category, condition, image_url, stock, sold_count,
                sku, import_handle, import_token, created_at
         FROM products WHERE lower(sku) = ${value} LIMIT 1
       `
@@ -345,7 +374,7 @@ export async function findProductByImportHandle(handle: string): Promise<Product
     await ensureSchema();
     const rows = asRows<Parameters<typeof rowToProduct>[0]>(
       await getSql()`
-        SELECT id, name, description, price, category, image_url, stock, sold_count,
+        SELECT id, name, description, price, category, condition, image_url, stock, sold_count,
                sku, import_handle, import_token, created_at
         FROM products WHERE lower(import_handle) = ${value} LIMIT 1
       `
@@ -363,7 +392,7 @@ export async function findProductByImportToken(token: string): Promise<Product |
     await ensureSchema();
     const rows = asRows<Parameters<typeof rowToProduct>[0]>(
       await getSql()`
-        SELECT id, name, description, price, category, image_url, stock, sold_count,
+        SELECT id, name, description, price, category, condition, image_url, stock, sold_count,
                sku, import_handle, import_token, created_at
         FROM products WHERE lower(import_token) = ${value} LIMIT 1
       `

@@ -1,4 +1,9 @@
 import { pickField, parseCsv, rowsToObjects } from "./csv-parse";
+import {
+  mapCategoryFromMarketplace,
+  mapShopCategory,
+  SHOP_CATEGORY_LABELS,
+} from "./product-categories";
 import type { Product } from "./types";
 
 export type ImportFormat = "simple" | "square" | "ebay" | "unknown";
@@ -26,45 +31,7 @@ export type ImportPreview = {
   skipped: { reason: string; name: string }[];
 };
 
-const JEWELRY_KEYWORDS = [
-  "jewelry",
-  "jewellery",
-  "ring",
-  "necklace",
-  "bracelet",
-  "earring",
-  "pendant",
-  "brooch",
-  "watch",
-  "gem",
-];
-
-export const SHOP_CATEGORY_LABELS: Record<Product["category"], string> = {
-  goods: "Used goods",
-  jewelry: "Jewelry",
-  other: "Other",
-};
-
-/** Map spreadsheet Category column to shop category (matches admin dropdown). */
-export function mapShopCategory(raw: string): Product["category"] {
-  const c = raw.trim().toLowerCase();
-  if (!c) return "goods";
-  if (c === "jewelry" || c === "jewellery") return "jewelry";
-  if (c === "other") return "other";
-  if (c === "used goods" || c === "goods" || c === "used" || c === "used good") {
-    return "goods";
-  }
-  if (JEWELRY_KEYWORDS.some((k) => c.includes(k))) return "jewelry";
-  if (c === "misc" || c === "miscellaneous") return "other";
-  return "goods";
-}
-
-function mapCategoryFromMarketplace(sourceCategory: string): Product["category"] {
-  const c = sourceCategory.toLowerCase();
-  if (JEWELRY_KEYWORDS.some((k) => c.includes(k))) return "jewelry";
-  if (!c || c === "other") return "other";
-  return "goods";
-}
+export { SHOP_CATEGORY_LABELS, mapShopCategory };
 
 function parsePrice(raw: string, fallback = ""): number {
   const value = (raw || fallback).replace(/[$,]/g, "").trim();

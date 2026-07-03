@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { isProductCategory } from "@/lib/product-categories";
+import { isProductCondition } from "@/lib/product-condition";
 import { createProduct, getProducts } from "@/lib/products";
 
 export async function GET() {
@@ -12,10 +14,14 @@ export async function POST(request: Request) {
   if (denied) return denied;
 
   const body = await request.json();
-  const { name, description, price, category, imageUrl, stock, sku } = body;
+  const { name, description, price, category, condition, imageUrl, stock, sku } = body;
 
   if (!name || !description || price == null || !category) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  if (!isProductCategory(category)) {
+    return NextResponse.json({ error: "Invalid category" }, { status: 400 });
   }
 
   const skuValue = typeof sku === "string" ? sku.trim() : "";
@@ -31,6 +37,7 @@ export async function POST(request: Request) {
     description: String(description),
     price: Number(price),
     category,
+    condition: isProductCondition(condition) ? condition : undefined,
     imageUrl: imageUrl ? String(imageUrl) : "",
     stock: stock != null ? Number(stock) : 1,
     sku: skuValue,

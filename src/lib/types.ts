@@ -1,11 +1,22 @@
-export type ProductCondition = "new" | "excellent" | "pre-owned";
+export type ProductCategory =
+  | "clothing"
+  | "shoes"
+  | "bags"
+  | "jewelry"
+  | "accessories"
+  | "toys"
+  | "collectibles"
+  | "goods"
+  | "other";
+
+export type ProductCondition = "new" | "excellent" | "pre-owned" | "fair";
 
 export type Product = {
   id: string;
   name: string;
   description: string;
   price: number;
-  category: "jewelry" | "goods" | "other";
+  category: ProductCategory;
   condition?: ProductCondition;
   imageUrl: string;
   stock: number;

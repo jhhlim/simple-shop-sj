@@ -67,6 +67,9 @@ async function initSchema() {
     ALTER TABLE products ADD COLUMN IF NOT EXISTS import_token TEXT
   `;
   await sql`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS condition TEXT
+  `;
+  await sql`
     CREATE INDEX IF NOT EXISTS products_sku_idx ON products (lower(sku)) WHERE sku IS NOT NULL
   `;
   await sql`

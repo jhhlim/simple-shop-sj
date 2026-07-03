@@ -42,19 +42,19 @@ export const BROWSE_CATEGORIES: BrowseCategory[] = [
       "tee",
       "t-shirt",
     ],
-    baseCategories: ["goods"],
+    baseCategories: ["clothing", "goods"],
   },
   {
     id: "shoes",
     label: "Shoes",
     keywords: ["shoe", "shoes", "boot", "boots", "sneaker", "sneakers", "footwear", "sandal", "heels"],
-    baseCategories: ["goods"],
+    baseCategories: ["shoes", "goods"],
   },
   {
     id: "bags",
     label: "Bags",
     keywords: ["bag", "purse", "handbag", "tote", "backpack", "clutch", "wallet"],
-    baseCategories: ["goods", "other"],
+    baseCategories: ["bags", "goods", "other"],
   },
   {
     id: "jewelry",
@@ -77,13 +77,13 @@ export const BROWSE_CATEGORIES: BrowseCategory[] = [
       "headband",
       "hair",
     ],
-    baseCategories: ["goods", "other"],
+    baseCategories: ["accessories", "goods", "other"],
   },
   {
     id: "toys",
     label: "Toys",
     keywords: ["toy", "toys", "plush", "doll", "lego", "action figure", "stuffed", "game", "puzzle"],
-    baseCategories: ["goods", "other"],
+    baseCategories: ["toys", "goods", "other"],
   },
   {
     id: "collectibles",
@@ -99,7 +99,7 @@ export const BROWSE_CATEGORIES: BrowseCategory[] = [
       "memorabilia",
       "limited edition",
     ],
-    baseCategories: ["goods", "jewelry", "other"],
+    baseCategories: ["collectibles", "goods", "jewelry", "other"],
   },
   {
     id: "new-arrivals",
@@ -136,8 +136,12 @@ export function productMatchesBrowseCategory(
   const config = BROWSE_CATEGORIES.find((c) => c.id === categoryId);
   if (!config) return true;
 
-  if (categoryId === "jewelry") {
-    return product.category === "jewelry" || matchesKeywords(product, config.keywords);
+  // Prefer explicit product category when it matches the browse bucket.
+  if (product.category === categoryId) return true;
+
+  // Legacy "goods" listings still match via keywords / baseCategories.
+  if (config.baseCategories?.includes(product.category) && matchesKeywords(product, config.keywords)) {
+    return true;
   }
 
   return matchesKeywords(product, config.keywords);

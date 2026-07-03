@@ -1,4 +1,5 @@
 import { SHOP_CATEGORY_LABELS } from "./catalog-import";
+import { getConditionLabel, getProductCondition } from "./product-condition";
 import type { Product } from "./types";
 
 export const PRODUCT_EXPORT_HEADERS = [
@@ -6,6 +7,7 @@ export const PRODUCT_EXPORT_HEADERS = [
   "Description",
   "Price",
   "Category",
+  "Condition",
   "Stock",
   "SKU",
   "Image URL",
@@ -24,6 +26,7 @@ export function productToExportRow(product: Product): string[] {
     product.description,
     product.price.toFixed(2),
     SHOP_CATEGORY_LABELS[product.category],
+    getConditionLabel(getProductCondition(product)),
     String(product.stock),
     product.sku || "",
     product.imageUrl,

@@ -1,20 +1,93 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useAdminGate } from "@/components/AdminAuth";
-import type { Product } from "@/lib/types";
+import {
+  PRODUCT_CATEGORIES,
+  SHOP_CATEGORY_LABELS,
+  getCategoryLabel,
+} from "@/lib/product-categories";
+import {
+  PRODUCT_CONDITIONS,
+  getConditionLabel,
+  getProductCondition,
+} from "@/lib/product-condition";
+import type { Product, ProductCategory, ProductCondition } from "@/lib/types";
 
-const emptyForm = {
+type ListingForm = {
+  name: string;
+  description: string;
+  price: string;
+  category: ProductCategory;
+  condition: ProductCondition;
+  imageUrl: string;
+  stock: string;
+  sku: string;
+};
+
+const emptyForm: ListingForm = {
   name: "",
   description: "",
   price: "",
-  category: "goods" as Product["category"],
+  category: "goods",
+  condition: "pre-owned",
   imageUrl: "",
   stock: "1",
   sku: "",
 };
+
+function AdminImagePreview({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (!src.trim() || failed) {
+    return (
+      <div className="flex h-32 w-32 items-center justify-center rounded-lg border border-dashed border-stone-300 bg-stone-50 px-2 text-center text-xs text-stone-500">
+        {failed ? "Photo failed to load" : "No photo"}
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- admin previews use public blob URLs; next/image can mis-serve HEIC/dynamic uploads
+    <img
+      src={src}
+      alt={alt}
+      className="h-32 w-32 rounded-lg border border-stone-200 object-cover bg-stone-100"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function AdminThumb({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (!src.trim() || failed) {
+    return (
+      <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-stone-300 bg-stone-50 px-1 text-center text-[10px] font-medium uppercase tracking-wide text-stone-400">
+        No photo
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className="h-16 w-16 shrink-0 rounded-lg border border-stone-200 object-cover bg-stone-100"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 export default function AdminPage() {
   const { ready } = useAdminGate();
@@ -22,6 +95,7 @@ export default function AdminPage() {
   const [message, setMessage] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [uploading, setUploading] = useState(false);
+  const [describing, setDescribing] = useState<"create" | "edit" | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
 
@@ -52,6 +126,45 @@ export default function AdminPage() {
       setMessage(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleGenerateDescription(target: "create" | "edit") {
+    const imageUrl = target === "create" ? form.imageUrl : editForm.imageUrl;
+    if (!imageUrl.trim()) {
+      setMessage("Upload a photo first, then generate a description.");
+      return;
+    }
+
+    const currentDescription =
+      target === "create" ? form.description : editForm.description;
+    if (
+      currentDescription.trim() &&
+      !confirm("Replace the current description with an AI-generated one?")
+    ) {
+      return;
+    }
+
+    setDescribing(target);
+    setMessage("");
+    try {
+      const res = await fetch("/api/admin/products/describe-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate description");
+      if (target === "create") {
+        setForm((f) => ({ ...f, description: data.description }));
+      } else {
+        setEditForm((f) => ({ ...f, description: data.description }));
+      }
+      setMessage("Description generated.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "AI description failed");
+    } finally {
+      setDescribing(null);
     }
   }
 
@@ -90,7 +203,8 @@ export default function AdminPage() {
       description: product.description,
       price: String(product.price),
       category: product.category,
-      imageUrl: product.imageUrl,
+      condition: getProductCondition(product),
+      imageUrl: product.imageUrl || "",
       stock: String(product.stock),
       sku: product.sku || "",
     });
@@ -231,13 +345,31 @@ export default function AdminPage() {
             <select
               value={form.category}
               onChange={(e) =>
-                setForm({ ...form, category: e.target.value as Product["category"] })
+                setForm({ ...form, category: e.target.value as ProductCategory })
               }
               className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
             >
-              <option value="goods">Used goods</option>
-              <option value="jewelry">Jewelry</option>
-              <option value="other">Other</option>
+              {PRODUCT_CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {SHOP_CATEGORY_LABELS[category]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            Quality / condition
+            <select
+              value={form.condition}
+              onChange={(e) =>
+                setForm({ ...form, condition: e.target.value as ProductCondition })
+              }
+              className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2"
+            >
+              {PRODUCT_CONDITIONS.map((condition) => (
+                <option key={condition} value={condition}>
+                  {getConditionLabel(condition)}
+                </option>
+              ))}
             </select>
           </label>
           <label className="block text-sm sm:col-span-2">
@@ -249,16 +381,23 @@ export default function AdminPage() {
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) handleUpload(file, "create");
+                e.target.value = "";
               }}
               className="mt-1 block w-full text-sm"
             />
           </label>
         </div>
-        {form.imageUrl && (
-          <div className="relative h-32 w-32 overflow-hidden rounded-lg bg-stone-100">
-            <Image src={form.imageUrl} alt="Preview" fill className="object-cover" />
-          </div>
-        )}
+        <div className="flex flex-wrap items-start gap-3">
+          <AdminImagePreview src={form.imageUrl} alt="Preview" />
+          <button
+            type="button"
+            disabled={!form.imageUrl || describing === "create" || uploading}
+            onClick={() => handleGenerateDescription("create")}
+            className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {describing === "create" ? "Generating…" : "Generate AI description"}
+          </button>
+        </div>
         <button
           type="submit"
           className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
@@ -269,7 +408,9 @@ export default function AdminPage() {
 
       <div className="mt-8 space-y-3">
         <h2 className="font-medium">Current listings ({products.length})</h2>
-        <p className="text-sm text-stone-500">Click Edit to update price, stock, photos, or description.</p>
+        <p className="text-sm text-stone-500">
+          Click Edit to update price, stock, photos, category, condition, or description.
+        </p>
         {products.map((p) => (
           <div key={p.id} className="rounded-xl border border-stone-200 bg-white p-4">
             {editingId === p.id ? (
@@ -284,10 +425,12 @@ export default function AdminPage() {
                   required
                   rows={2}
                   value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, description: e.target.value })
+                  }
                   className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm"
                 />
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="grid gap-2 sm:grid-cols-2">
                   <input
                     type="number"
                     min="0"
@@ -309,14 +452,32 @@ export default function AdminPage() {
                     onChange={(e) =>
                       setEditForm({
                         ...editForm,
-                        category: e.target.value as Product["category"],
+                        category: e.target.value as ProductCategory,
                       })
                     }
                     className="rounded-lg border border-stone-300 px-3 py-2 text-sm"
                   >
-                    <option value="goods">Used goods</option>
-                    <option value="jewelry">Jewelry</option>
-                    <option value="other">Other</option>
+                    {PRODUCT_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>
+                        {SHOP_CATEGORY_LABELS[category]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={editForm.condition}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        condition: e.target.value as ProductCondition,
+                      })
+                    }
+                    className="rounded-lg border border-stone-300 px-3 py-2 text-sm"
+                  >
+                    {PRODUCT_CONDITIONS.map((condition) => (
+                      <option key={condition} value={condition}>
+                        {getConditionLabel(condition)}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <label className="block text-sm">
@@ -328,29 +489,27 @@ export default function AdminPage() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) handleUpload(file, "edit");
+                      e.target.value = "";
                     }}
                     className="mt-1 block w-full text-sm"
                   />
                 </label>
-                {editForm.imageUrl ? (
-                  <div className="relative h-32 w-32 overflow-hidden rounded-lg bg-stone-100">
-                    <Image
-                      src={editForm.imageUrl}
-                      alt="Preview"
-                      fill
-                      className="object-cover"
-                      sizes="128px"
-                    />
-                  </div>
-                ) : (
-                  <p className="rounded-lg border border-dashed border-stone-300 bg-stone-50 px-3 py-2 text-xs text-stone-500">
-                    No photo — upload an image above
-                  </p>
-                )}
+                <div className="flex flex-wrap items-start gap-3">
+                  <AdminImagePreview src={editForm.imageUrl} alt="Preview" />
+                  <button
+                    type="button"
+                    disabled={!editForm.imageUrl || describing === "edit" || uploading}
+                    onClick={() => handleGenerateDescription("edit")}
+                    className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {describing === "edit" ? "Generating…" : "Generate AI description"}
+                  </button>
+                </div>
                 <div className="flex gap-2">
                   <button
                     type="submit"
-                    className="rounded-lg bg-stone-900 px-3 py-1.5 text-sm text-white"
+                    disabled={uploading}
+                    className="rounded-lg bg-stone-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
                   >
                     Save
                   </button>
@@ -366,26 +525,13 @@ export default function AdminPage() {
             ) : (
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-stone-100">
-                    {p.imageUrl ? (
-                      <Image
-                        src={p.imageUrl}
-                        alt={p.name}
-                        fill
-                        className="object-cover"
-                        sizes="64px"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center border border-dashed border-stone-300 px-1 text-center text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                        No photo
-                      </div>
-                    )}
-                  </div>
+                  <AdminThumb src={p.imageUrl || ""} alt={p.name} />
                   <div className="min-w-0">
                     <p className="font-medium">{p.name}</p>
                     <p className="text-sm text-stone-500">
-                      ${p.price.toFixed(2)} · {p.category} · {p.stock} in stock · {p.soldCount}{" "}
-                      sold
+                      ${p.price.toFixed(2)} · {getCategoryLabel(p.category)} ·{" "}
+                      {getConditionLabel(getProductCondition(p))} · {p.stock} in stock ·{" "}
+                      {p.soldCount} sold
                     </p>
                   </div>
                 </div>
