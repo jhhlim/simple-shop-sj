@@ -52,7 +52,9 @@ export default function AdminImportPage() {
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [updateExisting, setUpdateExisting] = useState(true);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoResult, setPhotoResult] = useState<PhotoResult | null>(null);
+  const [photoProgress, setPhotoProgress] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState<"preview" | "import" | "photos" | null>(null);
 
@@ -101,22 +103,54 @@ export default function AdminImportPage() {
     setMessage(`Done: ${data.created} added, ${data.updated} updated.`);
   }
 
-  async function handlePhotos(files: FileList | null) {
+  async function handlePhotos(files: File[] | FileList | null) {
     if (!files?.length) return;
+    const list = Array.from(files);
     setLoading("photos");
     setMessage("");
     setPhotoResult(null);
-    const body = new FormData();
-    Array.from(files).forEach((f) => body.append("files", f));
-    const res = await fetch("/api/admin/import/photos", { method: "POST", body });
-    const data = await res.json();
-    setLoading(null);
-    if (!res.ok) {
-      setMessage(data.error || "Photo import failed");
-      return;
+    setPhotoProgress("");
+
+    const batchSize = 20;
+    const combined: PhotoResult = {
+      total: list.length,
+      matched: 0,
+      unmatched: 0,
+      results: [],
+      unmatchedFiles: [],
+      errors: [],
+    };
+
+    for (let i = 0; i < list.length; i += batchSize) {
+      const batch = list.slice(i, i + batchSize);
+      setPhotoProgress(
+        `Uploading ${Math.min(i + batch.length, list.length)} of ${list.length}…`
+      );
+      const body = new FormData();
+      batch.forEach((f) => body.append("files", f));
+      const res = await fetch("/api/admin/import/photos", { method: "POST", body });
+      const data = (await res.json()) as PhotoResult & { error?: string };
+      if (!res.ok) {
+        setLoading(null);
+        setPhotoProgress("");
+        setMessage(data.error || "Photo import failed");
+        return;
+      }
+      combined.matched += data.matched;
+      combined.unmatched += data.unmatched;
+      combined.results.push(...(data.results || []));
+      combined.unmatchedFiles.push(...(data.unmatchedFiles || []));
+      combined.errors.push(...(data.errors || []));
     }
-    setPhotoResult(data);
-    setMessage(`Photos: ${data.matched} matched, ${data.unmatched} unmatched.`);
+
+    setLoading(null);
+    setPhotoProgress("");
+    setPhotoResult(combined);
+    setMessage(
+      `Photos done: ${combined.matched} matched, ${combined.unmatched} unmatched` +
+        (combined.errors.length ? `, ${combined.errors.length} errors` : "") +
+        "."
+    );
   }
 
   if (!ready) {
@@ -273,19 +307,48 @@ export default function AdminImportPage() {
         <h2 className="font-medium">3. Bulk photos (optional)</h2>
         <p className="text-sm text-stone-600">
           If you didn&apos;t use Image URL in the spreadsheet, upload photos named by{" "}
-          <strong>SKU</strong> (e.g. <code className="rounded bg-stone-100 px-1">RING001.jpg</code>
-          ).
+          <strong>SKU</strong> (e.g. <code className="rounded bg-stone-100 px-1">710090R.jpg</code>
+          ). Import your listings first so SKUs exist to match against.
         </p>
         <input
           type="file"
           accept="image/*"
           multiple
-          onChange={(e) => handlePhotos(e.target.files)}
+          disabled={loading === "photos"}
+          onChange={(e) => {
+            const picked = e.target.files ? Array.from(e.target.files) : [];
+            setPhotoFiles(picked);
+            setPhotoResult(null);
+            if (!picked.length) setMessage("");
+          }}
           className="block w-full text-sm"
         />
+        {photoFiles.length > 0 && (
+          <p className="text-sm text-stone-600">{photoFiles.length} file(s) selected</p>
+        )}
+        <button
+          type="button"
+          disabled={photoFiles.length === 0 || loading !== null}
+          onClick={() => handlePhotos(photoFiles)}
+          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50"
+        >
+          {loading === "photos" ? "Uploading photos…" : "Upload photos to shop"}
+        </button>
+        {photoProgress && <p className="text-sm text-stone-500">{photoProgress}</p>}
+        {photoResult && photoResult.matched > 0 && (
+          <p className="text-sm text-green-800">
+            {photoResult.matched} photo(s) attached to listings.
+          </p>
+        )}
         {photoResult && photoResult.unmatchedFiles.length > 0 && (
           <p className="text-sm text-amber-800">
-            {photoResult.unmatched} file(s) didn&apos;t match a SKU — rename and try again.
+            {photoResult.unmatched} file(s) didn&apos;t match a SKU — check filenames and try again.
+          </p>
+        )}
+        {photoResult && photoResult.errors.length > 0 && (
+          <p className="text-sm text-red-700">
+            {photoResult.errors.length} upload error(s). Try fewer files per batch or use Image URL
+            in your spreadsheet.
           </p>
         )}
       </section>
