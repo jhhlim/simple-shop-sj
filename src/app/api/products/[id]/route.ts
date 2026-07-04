@@ -33,6 +33,7 @@ export async function PATCH(
       | "condition"
       | "imageUrl"
       | "stock"
+      | "soldCount"
       | "sku"
     >
   > = {};
@@ -44,6 +45,7 @@ export async function PATCH(
   if (isProductCondition(body.condition)) patch.condition = body.condition;
   if (body.imageUrl != null) patch.imageUrl = normalizeStoredImageUrl(body.imageUrl);
   if (body.stock != null) patch.stock = Number(body.stock);
+  if (body.soldCount != null) patch.soldCount = Math.max(0, Math.floor(Number(body.soldCount)));
   if (body.sku != null) patch.sku = String(body.sku);
 
   const updated = await updateProduct(id, patch);

@@ -190,6 +190,7 @@ export async function updateProduct(
       | "condition"
       | "imageUrl"
       | "stock"
+      | "soldCount"
       | "sku"
       | "importHandle"
       | "importToken"
@@ -215,6 +216,10 @@ export async function updateProduct(
         ? normalizeStoredImageUrl(input.imageUrl)
         : existing.imageUrl,
     stock: input.stock != null ? Math.max(0, Math.floor(input.stock)) : existing.stock,
+    soldCount:
+      input.soldCount != null
+        ? Math.max(0, Math.floor(input.soldCount))
+        : existing.soldCount,
   };
   if (nextCondition) updated.condition = nextCondition;
   else delete updated.condition;
@@ -231,6 +236,7 @@ export async function updateProduct(
         condition = ${updated.condition ?? null},
         image_url = ${updated.imageUrl},
         stock = ${updated.stock},
+        sold_count = ${updated.soldCount},
         sku = ${updated.sku ?? null},
         import_handle = ${updated.importHandle ?? null},
         import_token = ${updated.importToken ?? null}
