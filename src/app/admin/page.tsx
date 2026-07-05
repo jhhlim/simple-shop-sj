@@ -53,15 +53,6 @@ type ListingAnalysis = {
   condition: ProductCondition;
 };
 
-type AiField =
-  | "all"
-  | "name"
-  | "description"
-  | "sku"
-  | "price"
-  | "category"
-  | "condition";
-
 /**
  * Preview public http(s) URLs, local blob: previews, or /uploads/ in dev.
  */
@@ -176,10 +167,6 @@ export default function AdminPage() {
     edit: false,
   });
   const [analyzing, setAnalyzing] = useState<"create" | "edit" | null>(null);
-  const [aiCache, setAiCache] = useState<{
-    create: ListingAnalysis | null;
-    edit: ListingAnalysis | null;
-  }>({ create: null, edit: null });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const createPreviewRef = useRef<string | null>(null);
@@ -317,8 +304,6 @@ export default function AdminPage() {
       } else {
         setEditForm((f) => ({ ...f, imageUrl: url }));
       }
-      // New photo → clear prior AI suggestions for this form.
-      setAiCache((prev) => ({ ...prev, [target]: null }));
       setMessage(wasHeic ? "HEIC converted and uploaded." : "Image uploaded.");
       setPhotoError((prev) => ({ ...prev, [target]: "" }));
     } catch (err) {
@@ -393,24 +378,15 @@ export default function AdminPage() {
     throw new Error("Add a photo first, then generate a description.");
   }
 
-  function applyAnalysis(
-    target: "create" | "edit",
-    analysis: ListingAnalysis,
-    field: AiField
-  ) {
-    const patch: Partial<ListingForm> = {};
-    if (field === "all" || field === "name") patch.name = analysis.name;
-    if (field === "all" || field === "description") {
-      patch.description = analysis.description;
-    }
-    if (field === "all" || field === "sku") patch.sku = analysis.sku;
-    if (field === "all" || field === "price") {
-      patch.price = analysis.price > 0 ? analysis.price.toFixed(2) : "";
-    }
-    if (field === "all" || field === "category") patch.category = analysis.category;
-    if (field === "all" || field === "condition") {
-      patch.condition = analysis.condition;
-    }
+  function applyAnalysis(target: "create" | "edit", analysis: ListingAnalysis) {
+    const patch: Partial<ListingForm> = {
+      name: analysis.name,
+      description: analysis.description,
+      sku: analysis.sku,
+      price: analysis.price > 0 ? analysis.price.toFixed(2) : "",
+      category: analysis.category,
+      condition: analysis.condition,
+    };
 
     if (target === "create") {
       setForm((f) => ({ ...f, ...patch }));
@@ -419,29 +395,14 @@ export default function AdminPage() {
     }
   }
 
-  function fieldHasValue(target: "create" | "edit", field: AiField): boolean {
+  function formHasAiContent(target: "create" | "edit"): boolean {
     const current = target === "create" ? form : editForm;
-    switch (field) {
-      case "name":
-        return Boolean(current.name.trim());
-      case "description":
-        return Boolean(current.description.trim());
-      case "sku":
-        return Boolean(current.sku.trim());
-      case "price":
-        return Boolean(current.price.trim());
-      case "category":
-        return current.category !== "goods" && current.category !== "other";
-      case "condition":
-        return current.condition !== "pre-owned";
-      case "all":
-        return Boolean(
-          current.name.trim() ||
-            current.description.trim() ||
-            current.sku.trim() ||
-            current.price.trim()
-        );
-    }
+    return Boolean(
+      current.name.trim() ||
+        current.description.trim() ||
+        current.sku.trim() ||
+        current.price.trim()
+    );
   }
 
   async function fetchListingAnalysis(
@@ -484,25 +445,26 @@ export default function AdminPage() {
       category: data.category || "other",
       condition: data.condition || "pre-owned",
     };
-    setAiCache((prev) => ({ ...prev, [target]: analysis }));
     return analysis;
   }
 
-  async function handleAiFill(target: "create" | "edit", field: AiField) {
+  async function handleAutoFillFromPhoto(
+    target: "create" | "edit",
+    options?: { skipConfirm?: boolean }
+  ) {
     const imageUrl = target === "create" ? form.imageUrl : editForm.imageUrl;
     if (!imageUrl.trim()) {
-      const err = "Add a photo first, then run AI fill.";
+      const err = "Add a photo first, then auto-fill.";
       setMessage(err);
       setPhotoError((prev) => ({ ...prev, [target]: err }));
       return;
     }
 
     if (
-      fieldHasValue(target, field) &&
+      !options?.skipConfirm &&
+      formHasAiContent(target) &&
       !confirm(
-        field === "all"
-          ? "Replace title, description, SKU, price, category, and condition with AI suggestions?"
-          : `Replace the current ${field} with an AI suggestion?`
+        "Replace title, description, SKU, price, category, and condition with AI suggestions from this photo?"
       )
     ) {
       return;
@@ -512,24 +474,13 @@ export default function AdminPage() {
     setMessage("");
     setPhotoError((prev) => ({ ...prev, [target]: "" }));
     try {
-      let analysis = aiCache[target];
-      // Re-analyze when filling all, or when we have no cache yet.
-      if (!analysis || field === "all") {
-        analysis = await fetchListingAnalysis(target);
-      }
-      applyAnalysis(target, analysis, field);
-      const labels: Record<AiField, string> = {
-        all: "Listing fields filled from photo",
-        name: "Title generated",
-        description: "Description generated",
-        sku: "SKU generated",
-        price: "Suggested price applied",
-        category: "Category set from photo",
-        condition: "Condition set from photo",
-      };
-      setMessage(labels[field] + ".");
+      const analysis = await fetchListingAnalysis(target);
+      applyAnalysis(target, analysis);
+      setMessage(
+        "Listing auto-filled from photo — review title, price, category, and condition before saving."
+      );
     } catch (err) {
-      const errorText = err instanceof Error ? err.message : "AI fill failed";
+      const errorText = err instanceof Error ? err.message : "Auto-fill failed";
       setMessage(errorText);
       setPhotoError((prev) => ({ ...prev, [target]: errorText }));
     } finally {
@@ -537,61 +488,24 @@ export default function AdminPage() {
     }
   }
 
-  function AiFillButtons({ target }: { target: "create" | "edit" }) {
+  function AutoFillButton({ target }: { target: "create" | "edit" }) {
     const imageUrl = target === "create" ? form.imageUrl : editForm.imageUrl;
     const busy = analyzing === target;
     const disabled = !imageUrl.trim() || busy;
-    const btn =
-      "rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-medium hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50";
 
     return (
-      <div className="min-w-0 flex-1 space-y-2">
+      <div className="min-w-0 flex-1">
         <button
           type="button"
           disabled={disabled}
-          onClick={() => handleAiFill(target, "all")}
-          className="rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => handleAutoFillFromPhoto(target)}
+          className="rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? "Analyzing photo…" : "Fill all from photo"}
+          {busy ? "Analyzing photo…" : "Auto-fill from photo"}
         </button>
-        <div className="flex flex-wrap gap-1.5">
-          <button type="button" disabled={disabled} onClick={() => handleAiFill(target, "name")} className={btn}>
-            AI title
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => handleAiFill(target, "description")}
-            className={btn}
-          >
-            AI description
-          </button>
-          <button type="button" disabled={disabled} onClick={() => handleAiFill(target, "sku")} className={btn}>
-            AI SKU
-          </button>
-          <button type="button" disabled={disabled} onClick={() => handleAiFill(target, "price")} className={btn}>
-            Suggest price
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => handleAiFill(target, "category")}
-            className={btn}
-          >
-            Auto category
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => handleAiFill(target, "condition")}
-            className={btn}
-          >
-            Auto condition
-          </button>
-        </div>
-        <p className="text-xs text-stone-500">
-          Uses the photo to suggest title, description, SKU, price, category, and
-          condition. You can edit any field after. Requires{" "}
+        <p className="mt-2 text-xs text-stone-500">
+          Fills title, description, SKU, suggested price, category, and condition from
+          the photo. Edit anything before saving. Requires{" "}
           <code className="rounded bg-stone-100 px-1">OPENAI_API_KEY</code> on Vercel.
         </p>
       </div>
@@ -644,7 +558,6 @@ export default function AdminPage() {
     setPhotoError((prev) => ({ ...prev, edit: "" }));
     setPhotoFileName((prev) => ({ ...prev, edit: "" }));
     setPhotoIsHeic((prev) => ({ ...prev, edit: false }));
-    setAiCache((prev) => ({ ...prev, edit: null }));
     setEditForm({
       name: product.name,
       description: product.description,
@@ -857,7 +770,7 @@ export default function AdminPage() {
         </div>
         <div className="flex flex-wrap items-start gap-4">
           <AdminImagePreview src={form.imageUrl} alt="Preview" />
-          <AiFillButtons target="create" />
+          <AutoFillButton target="create" />
         </div>
         <button
           type="submit"
@@ -989,7 +902,7 @@ export default function AdminPage() {
                 </label>
                 <div className="flex flex-wrap items-start gap-4">
                   <AdminImagePreview src={editForm.imageUrl} alt="Preview" />
-                  <AiFillButtons target="edit" />
+                  <AutoFillButton target="edit" />
                 </div>
                 <div className="flex gap-2">
                   <button
